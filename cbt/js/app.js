@@ -1,0 +1,4409 @@
+/**
+ * cbt/js/app.js
+ * E-Learning SMKN 1 CIBINONG — Application Engine v2.0
+ * ─────────────────────────────────────────────────────────────────
+ * Modules: Auth, Dashboard, Courses, Classes, Schedules, CBT Anti-Cheat Engine,
+ *          Rekap Absensi (Bulanan/Semesteran + Chart.js + Export),
+ *          User Management, Grades, Theme, Responsive Sidebar, i18n
+ */
+
+'use strict';
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   MAIN APP OBJECT
+══════════════════════════════════════════════════════════════════════════════ */
+const App = {
+  currentUser: null,
+  activeTab:   'dashboard',
+  theme:       localStorage.getItem('smkn_theme') || 'light',
+  lang:        localStorage.getItem('smkn_lang') || 'id',
+  sidebarOpen: false,
+
+  // i18n Dictionary
+  i18n: {
+    id: {
+      dashboard: 'Dashboard', courses: 'Mata Pelajaran', classes: 'Kelas & Rombel',
+      schedules: 'Jadwal Kelas', cbt: 'Ujian CBT Online', attendance: 'Input Presensi',
+      rekap: 'Rekap Absensi', grades: 'Daftar Nilai', users: 'Manajemen User',
+      announcements: 'Pengumuman', course_detail: 'Detail Kursus', logout: 'Keluar',
+      // UI strings
+      save: 'Simpan', cancel: 'Batal', delete: 'Hapus', edit: 'Edit', add: 'Tambah',
+      loading: 'Memuat...', no_data: 'Belum ada data.', confirm_delete: 'Yakin hapus data ini?',
+      mark_all_present: 'Tandai Semua Hadir', export_csv: 'Export CSV',
+      nilai_tugas: 'Nilai Tugas (30%)', nilai_uts: 'Nilai UTS (20%)',
+      nilai_uas: 'Nilai UAS/CBT (30%)', nilai_hadir: 'Nilai Kehadiran (20%)',
+      nilai_akhir: 'Nilai Akhir', predikat: 'Predikat',
+      materials: 'Materi', assignments: 'Tugas', discussions: 'Diskusi', presensi: 'Presensi'
+    },
+    en: {
+      dashboard: 'Dashboard', courses: 'Courses', classes: 'Classes',
+      schedules: 'Schedules', cbt: 'Online CBT Exams', attendance: 'Input Attendance',
+      rekap: 'Attendance Recap', grades: 'Grades', users: 'User Management',
+      announcements: 'Announcements', course_detail: 'Course Detail', logout: 'Logout',
+      save: 'Save', cancel: 'Cancel', delete: 'Delete', edit: 'Edit', add: 'Add',
+      loading: 'Loading...', no_data: 'No data yet.', confirm_delete: 'Confirm delete?',
+      mark_all_present: 'Mark All Present', export_csv: 'Export CSV',
+      nilai_tugas: 'Assignment Grade (30%)', nilai_uts: 'Midterm (20%)',
+      nilai_uas: 'Final/CBT (30%)', nilai_hadir: 'Attendance Grade (20%)',
+      nilai_akhir: 'Final Grade', predikat: 'Predicate',
+      materials: 'Materials', assignments: 'Assignments', discussions: 'Discussions', presensi: 'Attendance'
+    }
+  },
+  t(key) { return this.i18n[this.lang]?.[key] ?? key; },
+
+  toggleLang() {
+    this.lang = this.lang === 'id' ? 'en' : 'id';
+    localStorage.setItem('smkn_lang', this.lang);
+    const el = document.getElementById('lang-text');
+    if (el) el.textContent = this.lang.toUpperCase();
+    if (this.currentUser) {
+      this.renderAppLayout(this.activeTab);
+      this.renderNavbarUser();
+    }
+  },
+  sidebarOpen: false,
+
+  // Exam state
+  currentQuiz:          null,
+  questions:            [],
+  currentQuestionIndex: 0,
+  savedAnswers:         {},
+  flaggedQuestions:     {},
+  attemptId:            null,
+  timerInterval:        null,
+  timeRemaining:        0,
+
+  // Chart instances (to destroy before re-render)
+  _chartTrend:  null,
+  _chartDonut:  null,
+
+  // Rekap state
+  rekapMode:        'monthly',
+  rekapClassId:     0,
+  rekapMonth:       new Date().getMonth() + 1,
+  rekapYear:        new Date().getFullYear(),
+  rekapSemester:    1,
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     INIT
+  ──────────────────────────────────────────────────────────────────────────── */
+  init() {
+    this.applyTheme(this.theme);
+    this.startClock();
+    this.checkAuth();
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     CLOCK
+  ──────────────────────────────────────────────────────────────────────────── */
+  startClock() {
+    const tick = () => {
+      const el = document.getElementById('nav-clock-display');
+      if (!el) return;
+      const now = new Date();
+      el.textContent = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    };
+    tick();
+    setInterval(tick, 1000);
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     THEME
+  ──────────────────────────────────────────────────────────────────────────── */
+  applyTheme(t) {
+    this.theme = t;
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('smkn_theme', t);
+    const btn = document.getElementById('theme-btn');
+    if (btn) btn.querySelector('#theme-icon').textContent = t === 'dark' ? '🌙' : '☀️';
+    // Update chart colors if charts exist
+    if (this._chartTrend) this._applyChartTheme(this._chartTrend);
+    if (this._chartDonut) this._applyChartTheme(this._chartDonut);
+  },
+
+  toggleTheme() {
+    this.applyTheme(this.theme === 'dark' ? 'light' : 'dark');
+  },
+
+  _applyChartTheme(chart) {
+    const textColor = this.theme === 'dark' ? '#94a8c0' : '#3d5a7a';
+    if (chart.options.scales) {
+      ['x','y'].forEach(axis => {
+        if (chart.options.scales[axis]) {
+          chart.options.scales[axis].ticks.color = textColor;
+          chart.options.scales[axis].grid.color = this.theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+        }
+      });
+    }
+    chart.update();
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     SIDEBAR (Mobile responsive)
+  ──────────────────────────────────────────────────────────────────────────── */
+  toggleSidebar() {
+    this.sidebarOpen ? this.closeSidebar() : this.openSidebar();
+  },
+
+  openSidebar() {
+    this.sidebarOpen = true;
+    document.getElementById('main-sidebar')?.classList.add('open');
+    document.getElementById('sidebar-overlay')?.classList.add('open');
+    document.getElementById('hamburger-btn')?.classList.add('open');
+  },
+
+  closeSidebar() {
+    this.sidebarOpen = false;
+    document.getElementById('main-sidebar')?.classList.remove('open');
+    document.getElementById('sidebar-overlay')?.classList.remove('open');
+    document.getElementById('hamburger-btn')?.classList.remove('open');
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     AUTH
+  ──────────────────────────────────────────────────────────────────────────── */
+  checkAuth() {
+    fetch('api/auth.php?action=status')
+      .then(r => r.json())
+      .then(data => {
+        if (data.logged_in) {
+          this.currentUser = data.user;
+          this.renderNavbarUser();
+          document.getElementById('app-layout').style.display = '';
+          this.renderAppLayout(this.activeTab);
+        } else {
+          this.showLoginView();
+        }
+      })
+      .catch(() => this.showLoginView());
+  },
+
+  showLoginView() {
+    // Hide sidebar on login
+    document.getElementById('app-layout').classList.add('login-mode');
+    const sidebar = document.getElementById('main-sidebar');
+    if (sidebar) sidebar.style.display = 'none';
+
+    // Generate captcha
+    const captchaVal = this._genCaptcha();
+
+    document.getElementById('main-content').innerHTML = `
+      <!-- ══ MOBILE THIN BANNER (shown on < 1024px) ══ -->
+      <div class="login-mobile-banner">
+        <div class="login-mobile-banner-inner">
+          <img src="images/logo.png" alt="Logo SMKN 1 CIBINONG" class="login-mobile-banner-img" onerror="this.onerror=null; this.src='images/logo.jpg';">
+          <div class="login-mobile-banner-text">
+            <strong>E-Learning SMKN 1 CIBINONG</strong>
+            <span>Portal Pembelajaran Digital Terintegrasi</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ SPLIT-SCREEN WRAPPER ══ -->
+      <div class="login-split-wrapper">
+
+        <!-- ════ LEFT SIDE: VISUAL BANNER ════ -->
+        <div class="login-banner-side">
+          <img class="login-banner-img"
+               src="images/login-hero.jpg"
+               alt="Siswa-siswi SMKN 1 CIBINONG belajar di kelas modern"
+               onerror="this.onerror=null; this.src='images/login-banner.jpg';">
+          <div class="login-banner-overlay"></div>
+          <div class="login-banner-content">
+            <!-- Logo Row -->
+            <div class="login-banner-logo-row">
+              <img src="images/logo.png" alt="Logo SMKN 1 CIBINONG" class="login-banner-logo-img" onerror="this.onerror=null; this.src='images/logo.jpg';">
+              <span class="login-banner-logo-label">SMKN 1 CIBINONG</span>
+            </div>
+
+            <!-- Headline -->
+            <div class="login-banner-headline">
+              Selamat Datang di<br>
+              <span>E-Learning</span><br>
+              SMKN 1 CIBINONG
+            </div>
+
+            <!-- Sub-headline -->
+            <div class="login-banner-sub">
+              Portal Pembelajaran Digital Terintegrasi &amp; Berprestasi untuk seluruh warga SMKN 1 CIBINONG.
+            </div>
+
+            <!-- Badge Tagline -->
+            <div class="login-banner-badge">
+              Unggul, Berkarakter, Siap Kerja
+            </div>
+
+            <!-- Stats Row -->
+            <div class="login-banner-stats">
+              <div class="banner-stat">
+                <span class="banner-stat-num">2.400+</span>
+                <span class="banner-stat-label">Siswa Aktif</span>
+              </div>
+              <div class="banner-stat">
+                <span class="banner-stat-num">120+</span>
+                <span class="banner-stat-label">Tenaga Didik</span>
+              </div>
+              <div class="banner-stat">
+                <span class="banner-stat-num">18+</span>
+                <span class="banner-stat-label">Program Keahlian</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- ════ END LEFT SIDE ════ -->
+
+        <!-- ════ RIGHT SIDE: FORM LOGIN ════ -->
+        <div class="login-form-side" id="login-form-side">
+
+          <!-- Language Switcher -->
+          <div class="login-lang-switcher" id="login-lang-switcher" onclick="App.toggleLoginLang()">
+            <span class="lang-opt ${this.lang === 'id' ? 'active' : ''}" id="ls-id">ID</span>
+            <span class="lang-sep">|</span>
+            <span class="lang-opt ${this.lang === 'en' ? 'active' : ''}" id="ls-en">EN</span>
+          </div>
+
+          <div class="login-form-card">
+
+            <!-- Logo & Header -->
+            <div class="login-logo">
+              <img src="images/logo.png" alt="Logo SMKN 1 CIBINONG" class="login-form-logo-img" onerror="this.onerror=null; this.src='images/logo.jpg';">
+              <span class="login-school-name">E-Learning SMKN 1 CIBINONG</span>
+              <span class="login-welcome-text">Silakan Masuk ke Akun Anda</span>
+              <span class="login-tagline">E-Learning &amp; CBT Online · Portal Akademik Terpadu</span>
+              <br>
+              <span class="ssl-badge">🔒 Secure Connection SSL/TLS</span>
+            </div>
+
+            <!-- Error Banner -->
+            <div class="login-error" id="login-error"></div>
+
+            <!-- Form -->
+            <form class="login-form" onsubmit="App.handleLogin(event)" id="login-form-el" autocomplete="on">
+
+              <!-- Role Selector -->
+              <div class="form-group">
+                <label class="form-label">Masuk Sebagai</label>
+                <div class="role-grid">
+                  <button type="button" class="role-btn active" id="role-siswa" onclick="App.setRole('siswa')">
+                    <span class="role-icon">🎓</span>
+                    <span>Siswa</span>
+                  </button>
+                  <button type="button" class="role-btn" id="role-guru" onclick="App.setRole('guru')">
+                    <span class="role-icon">👨‍🏫</span>
+                    <span>Guru</span>
+                  </button>
+                  <button type="button" class="role-btn" id="role-admin" onclick="App.setRole('admin')">
+                    <span class="role-icon">🛡️</span>
+                    <span>Admin</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Username / NISN / NIP -->
+              <div class="form-group">
+                <label class="form-label" for="login-user" id="login-user-label">NISN / Username Siswa</label>
+                <div class="input-with-icon">
+                  <span class="input-icon">👤</span>
+                  <input type="text" id="login-user" class="form-control" placeholder="Masukkan NISN atau username" required autocomplete="username">
+                </div>
+              </div>
+
+              <!-- Password + Eye Toggle -->
+              <div class="form-group">
+                <label class="form-label" for="login-pass">Password</label>
+                <div class="input-with-icon">
+                  <span class="input-icon">🔒</span>
+                  <input type="password" id="login-pass" class="form-control with-toggle" placeholder="Masukkan password" required autocomplete="current-password">
+                  <button type="button" class="eye-toggle" id="eye-toggle-btn" onclick="App.togglePasswordVisibility()" title="Lihat/Sembunyikan Password">
+                    <span id="eye-icon">👁️</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Remember Me + Forgot Password -->
+              <div class="remember-row">
+                <label class="remember-label" for="remember-me">
+                  <input type="checkbox" id="remember-me" name="remember_me">
+                  Ingat Saya
+                </label>
+                <a href="#" class="forgot-link" id="forgot-pw-link" onclick="App.showForgotPassword(event)">
+                  Lupa Password?
+                </a>
+              </div>
+
+              <!-- Captcha -->
+              <div class="form-group">
+                <label class="form-label">Verifikasi Keamanan <span style="font-weight:400;color:var(--text-muted)">(klik untuk ganti)</span></label>
+                <div class="captcha-row">
+                  <div class="captcha-box" id="captcha-box" onclick="App.refreshCaptcha()" title="Klik untuk ganti kode">${captchaVal}</div>
+                  <input type="text" id="captcha-input" class="form-control captcha-input" placeholder="Ketik kode di atas" required autocomplete="off" maxlength="6">
+                </div>
+              </div>
+
+              <!-- Login Button -->
+              <button type="submit" class="btn-login" id="login-btn">
+                🔐 Masuk / Login
+              </button>
+            </form>
+
+            <!-- Demo Quick Login -->
+            <div class="demo-login-section">
+              <div class="demo-label">— Akses Demo Cepat (Testing) —</div>
+              <div class="demo-btns">
+                <button class="demo-btn" onclick="App.quickLogin('admin','password123')">🛡️ Admin</button>
+                <button class="demo-btn" onclick="App.quickLogin('guru1','password123')">👨‍🏫 Bpk. Andi (Guru)</button>
+                <button class="demo-btn" onclick="App.quickLogin('siswa1','password123')">🎓 Ahmad (Siswa)</button>
+                <button class="demo-btn" onclick="App.quickLogin('siswa2','password123')">🎓 Bunga (Siswa)</button>
+              </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="login-footer">
+              © 2026 E-Learning SMKN 1 CIBINONG. All Rights Reserved.<br>
+              Jl. Karadenan No.1, Cibinong, Kab. Bogor 16913
+            </div>
+          </div>
+        </div>
+        <!-- ════ END RIGHT SIDE ════ -->
+
+      </div><!-- /.login-split-wrapper -->
+    `;
+
+    // Store captcha value
+    this._captcha = captchaVal;
+  },
+
+  togglePasswordVisibility() {
+    const passInput = document.getElementById('login-pass');
+    const eyeIcon   = document.getElementById('eye-icon');
+    if (!passInput) return;
+    if (passInput.type === 'password') {
+      passInput.type = 'text';
+      if (eyeIcon) eyeIcon.textContent = '🙈';
+    } else {
+      passInput.type = 'password';
+      if (eyeIcon) eyeIcon.textContent = '👁️';
+    }
+  },
+
+  toggleLoginLang() {
+    this.lang = this.lang === 'id' ? 'en' : 'id';
+    localStorage.setItem('smkn_lang', this.lang);
+    const el = document.getElementById('lang-text');
+    if (el) el.textContent = this.lang.toUpperCase();
+    // Update switcher UI
+    document.getElementById('ls-id')?.classList.toggle('active', this.lang === 'id');
+    document.getElementById('ls-en')?.classList.toggle('active', this.lang === 'en');
+  },
+
+  showForgotPassword(e) {
+    e.preventDefault();
+    alert('Silakan hubungi Administrator SMKN 1 CIBINONG untuk reset password.\nEmail: admin@smkn1cibinong.sch.id');
+  },
+
+
+
+  _captcha: '',
+  _selectedRole: 'siswa',
+
+  _genCaptcha() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let c = '';
+    for (let i = 0; i < 5; i++) c += chars[Math.floor(Math.random() * chars.length)];
+    return c;
+  },
+
+  refreshCaptcha() {
+    const val = this._genCaptcha();
+    this._captcha = val;
+    const el = document.getElementById('captcha-box');
+    if (el) el.textContent = val;
+    const inp = document.getElementById('captcha-input');
+    if (inp) inp.value = '';
+  },
+
+  setRole(role) {
+    this._selectedRole = role;
+    ['siswa','guru','admin'].forEach(r => {
+      document.getElementById(`role-${r}`)?.classList.toggle('active', r === role);
+    });
+    const labels = { siswa: 'NISN / Username Siswa', guru: 'NIP / Username Guru', admin: 'Username Administrator' };
+    const ph = { siswa: 'Masukkan NISN atau username', guru: 'Masukkan NIP atau username', admin: 'Masukkan username admin' };
+    const lbl = document.getElementById('login-user-label');
+    const inp = document.getElementById('login-user');
+    if (lbl) lbl.textContent = labels[role];
+    if (inp) inp.placeholder = ph[role];
+  },
+
+  handleLogin(e) {
+    e.preventDefault();
+    const captchaInput = document.getElementById('captcha-input')?.value?.trim().toUpperCase();
+    if (captchaInput !== this._captcha) {
+      this._showLoginError('Kode verifikasi salah. Silakan coba lagi.');
+      this.refreshCaptcha();
+      return;
+    }
+
+    const username = document.getElementById('login-user').value.trim();
+    const password = document.getElementById('login-pass').value;
+
+    if (!username || !password) {
+      this._showLoginError('Username dan password wajib diisi.');
+      return;
+    }
+
+    const btn = document.getElementById('login-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Memproses...'; }
+    this._hideLoginError();
+
+    fetch('api/auth.php?action=login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          this.currentUser = data.user;
+          document.getElementById('app-layout').classList.remove('login-mode');
+          document.getElementById('main-sidebar').style.display = '';
+          this.renderNavbarUser();
+          this.renderAppLayout('dashboard');
+        } else {
+          this._showLoginError(data.message || 'Login gagal. Periksa kembali data Anda.');
+          this.refreshCaptcha();
+          if (btn) { btn.disabled = false; btn.textContent = '🔐 Masuk ke Portal Akademik'; }
+        }
+      })
+      .catch(() => {
+        this._showLoginError('Koneksi bermasalah. Pastikan server berjalan.');
+        if (btn) { btn.disabled = false; btn.textContent = '🔐 Masuk ke Portal Akademik'; }
+      });
+  },
+
+  quickLogin(username, password) {
+    this._hideLoginError();
+    fetch('api/auth.php?action=login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          this.currentUser = data.user;
+          document.getElementById('app-layout').classList.remove('login-mode');
+          document.getElementById('main-sidebar').style.display = '';
+          this.renderNavbarUser();
+          this.renderAppLayout('dashboard');
+        } else {
+          this._showLoginError(data.message);
+        }
+      });
+  },
+
+  _showLoginError(msg) {
+    const el = document.getElementById('login-error');
+    if (el) { el.textContent = msg; el.style.display = 'block'; }
+  },
+  _hideLoginError() {
+    const el = document.getElementById('login-error');
+    if (el) el.style.display = 'none';
+  },
+
+  logout() {
+    fetch('api/auth.php?action=logout')
+      .then(() => {
+        this.currentUser = null;
+        this.activeTab = 'dashboard';
+        this.closeSidebar();
+        this.showLoginView();
+        // Reset navbar user
+        const ua = document.getElementById('navbar-user-area');
+        if (ua) ua.innerHTML = '';
+      });
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     NAVBAR USER
+  ──────────────────────────────────────────────────────────────────────────── */
+  renderNavbarUser() {
+    const u = this.currentUser;
+    if (!u) return;
+    const initials = u.name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+    const roleLabel = { admin: 'Administrator', guru: 'Guru', siswa: 'Siswa' };
+    const ua = document.getElementById('navbar-user-area');
+    if (!ua) return;
+    ua.innerHTML = `
+      <div class="nav-avatar" title="Klik untuk edit profil" style="cursor:pointer;" onclick="App.openProfileModal()">${initials}</div>
+      <div class="nav-user-info" style="cursor:pointer;" onclick="App.openProfileModal()" title="Klik untuk edit profil">
+        <span class="nav-user-name">${this.escHtml(u.name)} ⚙️</span>
+        <span class="nav-user-role">${roleLabel[u.role] || u.role}</span>
+      </div>
+      <button class="nav-logout-btn" onclick="App.logout()">${this.t('logout')}</button>
+    `;
+  },
+
+  openProfileModal() {
+    const u = this.currentUser;
+    fetch(`api/users.php?id=${u.id}`)
+      .then(r => r.json())
+      .then(d => {
+        const user = d.user || u;
+        const isGuru = user.role === 'guru';
+        const isAdmin = user.role === 'admin';
+
+        this.openModal('Profil & Pengaturan Akun', `
+          <form onsubmit="App.handleUpdateProfile(event)">
+            <div class="form-group mb-2">
+              <label class="form-label">Nama Lengkap</label>
+              <input type="text" id="prof-name" class="form-control" value="${this.escHtml(user.name)}" required>
+            </div>
+            <div class="grid-2col mb-2" style="gap:0.75rem;">
+              <div class="form-group">
+                <label class="form-label">Username</label>
+                <input type="text" class="form-control" value="${this.escHtml(user.username)}" disabled style="opacity:0.7;">
+              </div>
+              <div class="form-group">
+                <label class="form-label">NIP / NIS</label>
+                <input type="text" id="prof-nip" class="form-control" value="${this.escHtml(user.nip_nis || '')}">
+              </div>
+            </div>
+            <div class="form-group mb-2">
+              <label class="form-label">Jurusan / Program Keahlian</label>
+              <select id="prof-major" class="form-control">
+                <option value="Umum" ${user.major === 'Umum' ? 'selected' : ''}>Umum</option>
+                <option value="RPL" ${user.major === 'RPL' ? 'selected' : ''}>RPL (Rekayasa Perangkat Lunak)</option>
+                <option value="SIJA" ${user.major === 'SIJA' ? 'selected' : ''}>SIJA (Sistem Informatika Jaringan & Aplikasi)</option>
+                <option value="TKJ" ${user.major === 'TKJ' ? 'selected' : ''}>TKJ (Teknik Komputer & Jaringan)</option>
+              </select>
+            </div>
+            ${isGuru || isAdmin ? `
+              <div class="form-group mb-2">
+                <label class="form-label">Mata Pelajaran yang Diampu</label>
+                <input type="text" id="prof-subj" class="form-control" placeholder="cth: Pemrograman Web, Basis Data" value="${this.escHtml(user.subjects || '')}">
+              </div>
+              <div class="form-group mb-2">
+                <label class="form-label">Kelas yang Diajar</label>
+                <input type="text" id="prof-classes" class="form-control" placeholder="cth: XII RPL 1, XII SIJA 1" value="${this.escHtml(user.classes_taught || '')}">
+              </div>
+            ` : ''}
+            <div class="form-group mb-3">
+              <label class="form-label">Ganti Password (Kosongkan jika tidak ingin mengubah)</label>
+              <input type="password" id="prof-pass" class="form-control" placeholder="Password baru…">
+            </div>
+            <div class="flex-end flex-gap-1">
+              <button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button>
+              <button type="submit" class="btn btn-primary">Simpan Profil</button>
+            </div>
+          </form>
+        `);
+      });
+  },
+
+  handleUpdateProfile(e) {
+    e.preventDefault();
+    const body = {
+      action: 'update_profile',
+      name: document.getElementById('prof-name').value,
+      nip_nis: document.getElementById('prof-nip') ? document.getElementById('prof-nip').value : '',
+      major: document.getElementById('prof-major') ? document.getElementById('prof-major').value : 'Umum',
+      subjects: document.getElementById('prof-subj') ? document.getElementById('prof-subj').value : '',
+      classes_taught: document.getElementById('prof-classes') ? document.getElementById('prof-classes').value : '',
+      password: document.getElementById('prof-pass') ? document.getElementById('prof-pass').value : ''
+    };
+
+    fetch('api/users.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(r => r.json()).then(res => {
+      if (res.success) {
+        this.currentUser.name = body.name;
+        this.renderNavbarUser();
+        this.closeModal();
+        this._toast('✅ Profil berhasil diperbarui.');
+      } else alert(res.message);
+    });
+  },
+
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     APP LAYOUT (Sidebar + Content)
+  ──────────────────────────────────────────────────────────────────────────── */
+  renderAppLayout(tab) {
+    this.activeTab = tab;
+    this.closeSidebar();
+
+    const u = this.currentUser;
+    const isAdmin   = u.role === 'admin';
+    const isGuru    = u.role === 'guru';
+    const isStaff   = isAdmin || isGuru;
+    const isSiswa   = u.role === 'siswa';
+
+    // Build sidebar nav (Clean Text-Only Menu as requested)
+    const navItems = [
+      { tab: 'dashboard',     label: this.t('dashboard'),     section: 'Akademik' },
+      { tab: 'courses',       label: this.t('courses'),       section: null },
+      { tab: 'classes',       label: this.t('classes'),       section: null },
+      { tab: 'schedules',     label: this.t('schedules'),     section: null },
+      { tab: 'cbt',           label: this.t('cbt'),           section: 'Evaluasi & Penilaian' },
+      ...(isStaff ? [
+        { tab: 'proctoring',  label: 'Pengawasan Ujian (Real-Time)', section: null }
+      ] : []),
+      { tab: 'grades',        label: this.t('grades'),        section: null },
+      { tab: 'attendance',    label: this.t('attendance'),    section: 'Presensi',    staffOnly: true },
+      { tab: 'rekap',         label: this.t('rekap'),         section: null },
+      { tab: 'announcements', label: this.t('announcements'), section: 'Komunikasi',  staffOnly: false },
+      ...(isStaff ? [
+        { tab: 'users', label: this.t('users'), section: 'Administrasi' }
+      ] : [])
+    ];
+
+    let lastSection = '';
+    let navHtml = '';
+    navItems.forEach(item => {
+      if (item.staffOnly && !isStaff) return;
+      if (item.section && item.section !== lastSection) {
+        if (lastSection) navHtml += `<div class="sidebar-divider"></div>`;
+        navHtml += `<div class="sidebar-section-label">${item.section}</div>`;
+        lastSection = item.section;
+      }
+      navHtml += `
+        <a class="nav-link ${this.activeTab === item.tab ? 'active' : ''}"
+           onclick="App.renderAppLayout('${item.tab}')">
+          <span class="nav-link-text">${item.label}</span>
+        </a>
+      `;
+    });
+
+    document.getElementById('sidebar-nav-content').innerHTML = navHtml;
+
+    // Load view
+    const views = {
+      dashboard:     () => this.loadDashboard(),
+      courses:       () => this.loadCourses(),
+      classes:       () => this.loadClasses(),
+      schedules:     () => this.loadSchedules(),
+      cbt:           () => this.loadCbt(),
+      proctoring:    () => this.loadProctoringDashboard(),
+      attendance:    () => this.loadAttendanceInput(),
+      rekap:         () => this.loadRekapAbsensi(),
+      grades:        () => this.loadGradesModule(),
+      announcements: () => this.loadAnnouncements(),
+      users:         () => this.loadUsers(),
+    };
+
+    const mc = document.getElementById('main-content');
+    mc.innerHTML = `<div class="boot-screen"><div class="boot-shield">
+      <div class="boot-text">Memuat data…</div>
+      <div class="boot-bar"><div class="boot-bar-fill"></div></div>
+    </div></div>`;
+
+    (views[tab] || views.dashboard)();
+  },
+
+  setContent(html) {
+    document.getElementById('main-content').innerHTML = html;
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     DASHBOARD
+  ──────────────────────────────────────────────────────────────────────────── */
+  loadDashboard() {
+    fetch('api/dashboard.php')
+      .then(r => r.json())
+      .then(data => {
+        const s = data.stats || {};
+        const u = this.currentUser;
+        const isStaff = u.role !== 'siswa';
+        const roleEmoji = { admin: '🛡️', guru: '👨‍🏫', siswa: '🎓' };
+
+        const recentQuizzes = (data.recent_quizzes || []).slice(0, 3);
+        const quizHtml = recentQuizzes.length ? recentQuizzes.map(q => `
+          <div style="display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0;border-bottom:1px solid var(--border-subtle);">
+            <div style="width:36px;height:36px;border-radius:var(--r-md);background:var(--cyan-dim);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">📝</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;font-size:0.88rem;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escHtml(q.title)}</div>
+              <div style="font-size:0.75rem;color:var(--text-muted);">Oleh: ${this.escHtml(q.teacher_name || '—')} · ${q.duration_minutes} menit</div>
+            </div>
+            <span class="badge badge-cyan">${q.status}</span>
+          </div>
+        `).join('') : `<div class="empty-state"><div class="empty-icon">📝</div><p>Belum ada ujian terbaru.</p></div>`;
+
+        // Student attendance summary
+        const ss = data.student_stats;
+        const studentAttHtml = (u.role === 'siswa' && ss) ? `
+          <div class="card mb-3">
+            <div class="card-title">📋 Rekap Presensi Saya</div>
+            <div class="stats-grid" style="margin-bottom:0;">
+              <div class="stat-card">
+                <div class="stat-icon-box" style="background:var(--emerald-dim);font-size:1.3rem;">✅</div>
+                <div><div class="stat-value text-green">${ss.attendance_summary?.hadir || 0}</div><div class="stat-label">Hadir</div></div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon-box" style="background:var(--blue-dim);font-size:1.3rem;">📄</div>
+                <div><div class="stat-value" style="color:var(--blue);">${ss.attendance_summary?.izin || 0}</div><div class="stat-label">Izin</div></div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon-box" style="background:var(--amber-dim);font-size:1.3rem;">🤒</div>
+                <div><div class="stat-value text-amber">${ss.attendance_summary?.sakit || 0}</div><div class="stat-label">Sakit</div></div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon-box" style="background:var(--danger-dim);font-size:1.3rem;">❌</div>
+                <div><div class="stat-value text-danger">${ss.attendance_summary?.alpa || 0}</div><div class="stat-label">Alpa</div></div>
+              </div>
+            </div>
+          </div>
+        ` : '';
+
+        this.setContent(`
+          <!-- Hero Banner -->
+          <div class="hero-banner">
+            <div>
+              <div class="hero-badge">${roleEmoji[u.role]} Tahun Ajaran 2026/2027 · SMKN 1 CIBINONG</div>
+              <div class="hero-title">Selamat Datang, <span>${this.escHtml(u.name.split(' ')[0])}!</span> 👋</div>
+              <div class="hero-sub">
+                Portal E-Learning & CBT Online SMKN 1 CIBINONG. Akses materi, ujian, presensi, dan nilai akademik dalam satu platform terintegrasi.
+              </div>
+            </div>
+            <div class="hero-logo-box">
+              <img src="images/logo.png" alt="Logo SMKN 1 CIBINONG" class="hero-logo-img" onerror="this.onerror=null; this.src='images/logo.jpg';">
+            </div>
+          </div>
+
+          <!-- Stats Grid -->
+          <div class="stats-grid">
+            ${isStaff ? `
+              <div class="stat-card">
+                <div class="stat-icon-box">📚</div>
+                <div><div class="stat-value">${s.total_courses || 0}</div><div class="stat-label">Mata Pelajaran</div></div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon-box" style="background:rgba(99,102,241,0.15);font-size:1.3rem;">🏛️</div>
+                <div><div class="stat-value">${s.total_classes || 0}</div><div class="stat-label">Kelas / Rombel</div></div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon-box" style="background:var(--emerald-dim);font-size:1.3rem;">🎓</div>
+                <div><div class="stat-value text-green">${s.total_students || 0}</div><div class="stat-label">Siswa Aktif</div></div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon-box" style="background:var(--amber-dim);font-size:1.3rem;">📝</div>
+                <div><div class="stat-value text-amber">${s.total_quizzes || 0}</div><div class="stat-label">Ujian CBT Aktif</div></div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon-box" style="background:var(--cyan-dim);font-size:1.3rem;">✅</div>
+                <div><div class="stat-value text-cyan">${s.today_attendance || 0}</div><div class="stat-label">Hadir Hari Ini</div></div>
+              </div>
+            ` : `
+              <div class="stat-card">
+                <div class="stat-icon-box">📝</div>
+                <div><div class="stat-value">${ss?.completed_exams || 0}</div><div class="stat-label">Ujian Selesai</div></div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon-box" style="background:var(--emerald-dim);">✅</div>
+                <div><div class="stat-value text-green">${ss?.attendance_summary?.hadir || 0}</div><div class="stat-label">Total Hadir</div></div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon-box" style="background:var(--danger-dim);">❌</div>
+                <div><div class="stat-value text-danger">${ss?.attendance_summary?.alpa || 0}</div><div class="stat-label">Alpa</div></div>
+              </div>
+            `}
+          </div>
+
+          ${studentAttHtml}
+
+          <!-- 2-col: Announcements + Quick Links -->
+          <div class="grid-2col">
+            <div class="card">
+              <div class="card-title">📢 ${this.t('announcements')}
+                ${isStaff ? `<button class="btn btn-outline" style="margin-left:auto;font-size:0.78rem;padding:0.3rem 0.7rem;" onclick="App.renderAppLayout('announcements')">Kelola ›</button>` : ''}
+              </div>
+              <div class="glow-line"></div>
+              <div id="dash-announcements"><div style="color:var(--text-muted);font-size:0.85rem;">Memuat pengumuman…</div></div>
+            </div>
+
+            <div class="card">
+              <div class="card-title">⚡ Menu Pintas</div>
+              <div style="display:flex;flex-direction:column;gap:0.6rem;">
+                <button class="btn btn-primary btn-full" onclick="App.renderAppLayout('cbt')">📝 Buka Menu Ujian CBT</button>
+                <button class="btn btn-outline btn-full"  onclick="App.renderAppLayout('rekap')">📊 Rekap Absensi Siswa</button>
+                <button class="btn btn-outline btn-full" onclick="App.renderAppLayout('grades')">🏆 Lihat Daftar Nilai</button>
+                ${isStaff ? `<button class="btn btn-primary btn-full" onclick="App.renderAppLayout('attendance')">📋 Input Presensi Hari Ini</button>` : ''}
+              </div>
+              <div class="glow-line" style="margin:1.25rem 0 1rem;"></div>
+              <div class="card-title" style="font-size:0.9rem;">📝 Ujian Terbaru</div>
+              ${quizHtml}
+            </div>
+          </div>
+        `);
+
+        // Load announcements dynamically
+        fetch('api/announcements.php')
+          .then(r => r.json())
+          .then(ann => {
+            const el = document.getElementById('dash-announcements');
+            if (!el) return;
+            const items = ann.data || ann.announcements || [];
+            if (!items.length) { el.innerHTML = `<div class="empty-state" style="padding:1rem 0;"><div class="empty-icon">📢</div><p>Belum ada pengumuman.</p></div>`; return; }
+            el.innerHTML = items.slice(0,4).map(a => `
+              <div style="background:var(--bg-card2);border:1px solid var(--border-subtle);border-radius:var(--r-md);padding:1rem;margin-bottom:0.75rem;">
+                <div class="flex-between mb-1">
+                  <span style="font-weight:700;color:var(--accent);font-size:0.88rem;">${a.is_pinned ? '📌 ' : ''}${this.escHtml(a.title)}</span>
+                  <span class="badge badge-${a.target === 'siswa' ? 'cyan' : a.target === 'guru' ? 'amber' : 'blue'}" style="font-size:0.65rem;">${a.target === 'all' ? 'Semua' : a.target}</span>
+                </div>
+                <p style="font-size:0.82rem;color:var(--text-sub);line-height:1.55;margin:0;">${this.escHtml(a.content).substring(0,180)}${a.content.length > 180 ? '…' : ''}</p>
+                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.4rem;">${this.escHtml(a.author_name)} · ${new Date(a.created_at).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'})}</div>
+              </div>
+            `).join('');
+          })
+          .catch(() => { const el = document.getElementById('dash-announcements'); if(el) el.innerHTML = ''; });
+      });
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     COURSES
+  ──────────────────────────────────────────────────────────────────────────── */
+  _courseFilterMajor: 'all',
+
+  loadCourses(filterMajor) {
+    if (filterMajor !== undefined) this._courseFilterMajor = filterMajor;
+    const major = this._courseFilterMajor;
+    const url = major !== 'all' ? `api/courses.php?major=${encodeURIComponent(major)}` : 'api/courses.php';
+
+    fetch(url)
+      .then(r => r.json())
+      .then(data => {
+        const courses = data.courses || [];
+        const isStaff = this.currentUser.role !== 'siswa';
+
+        const courseCards = courses.length ? courses.map(c => `
+          <div class="quiz-card">
+            <div>
+              <div class="flex-between mb-2">
+                <span style="font-size:2rem;">${c.icon || '📚'}</span>
+                <div style="display:flex;gap:0.35rem;flex-wrap:wrap;">
+                  <span class="badge badge-cyan">${this.escHtml(c.course_code)}</span>
+                  ${c.major ? `<span class="badge badge-amber">${this.escHtml(c.major)}</span>` : ''}
+                </div>
+              </div>
+              <div class="quiz-card-title">${this.escHtml(c.course_name)}</div>
+              <div class="quiz-card-desc">
+                🏛️ Kelas: <b>${this.escHtml(c.class_name || 'Semua Kelas')}</b><br>
+                👨‍🏫 Pengampu: <b>${this.escHtml(c.teacher_name || 'Belum ditugaskan')}</b><br>
+                📁 <b>${c.material_count || 0}</b> Materi &bull; 📝 <b>${c.assignment_count || 0}</b> Tugas &bull; 🎯 <b>${c.quiz_count || 0}</b> Ujian
+              </div>
+            </div>
+            <div class="quiz-card-actions">
+              <button class="btn btn-primary btn-full" onclick="App.openCourseDetail(${c.id})">📖 Masuk Kelas & Materi</button>
+              <div class="flex-gap-1 mt-1">
+                <button class="btn btn-outline" style="flex:1;" onclick="App.renderAppLayout('cbt')">📝 CBT (${c.quiz_count || 0})</button>
+                ${isStaff ? `
+                  <button class="btn btn-outline btn-sm" onclick="App.openEditCourseModal(${c.id})" title="Edit Mapel">✏️ Edit</button>
+                  <button class="btn btn-danger btn-sm" onclick="App.deleteCourse(${c.id})" title="Hapus Mapel">🗑️</button>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        `).join('') : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">📚</div><p>Belum ada mata pelajaran terdaftar untuk jurusan ini.</p></div>`;
+
+        this.setContent(`
+          <div class="flex-between mb-3">
+            <div>
+              <div class="section-title">📚 Mata Pelajaran</div>
+              <div class="section-sub">Daftar mata pelajaran yang tersedia di SMKN 1 CIBINONG.</div>
+            </div>
+            ${isStaff ? `<button class="btn btn-primary" onclick="App.openAddCourseModal()">➕ Tambah Mapel</button>` : ''}
+          </div>
+          <div class="filter-bar mb-3" style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+            ${['all', 'RPL', 'SIJA', 'TKJ', 'Umum'].map(m => `
+              <button class="btn btn-sm ${major === m ? 'btn-primary' : 'btn-secondary'}" 
+                onclick="App.loadCourses('${m}')">
+                ${m === 'all' ? '🌐 Semua Jurusan' : '🎯 Jurusan ' + m}
+              </button>
+            `).join('')}
+          </div>
+          <div class="cards-grid">${courseCards}</div>
+        `);
+      });
+  },
+
+  openAddCourseModal() {
+    Promise.all([
+      fetch('api/classes.php').then(r => r.json()),
+      fetch('api/users.php?role=guru').then(r => r.json())
+    ]).then(([dClasses, dGurus]) => {
+      const classes = dClasses.classes || [];
+      const gurus = dGurus.users || [];
+      const classOpts = `<option value="">- Semua Kelas (Umum) -</option>` + classes.map(cl => `<option value="${cl.id}">${this.escHtml(cl.class_name)}</option>`).join('');
+      const guruOpts = `<option value="">- Pilih Guru Pengampu -</option>` + gurus.map(g => `<option value="${g.id}">${this.escHtml(g.name)} (${g.nip_nis || g.username})</option>`).join('');
+
+      this.openModal('Tambah Mata Pelajaran Baru', `
+        <form onsubmit="App.handleAddCourse(event)">
+          <div class="form-group mb-2"><label class="form-label">Kode Mapel *</label><input type="text" id="c-code" class="form-control" placeholder="cth: RPL-PWB" required></div>
+          <div class="form-group mb-2"><label class="form-label">Nama Mata Pelajaran *</label><input type="text" id="c-name" class="form-control" placeholder="cth: Pemrograman Web & Basis Data" required></div>
+          <div class="form-group mb-2"><label class="form-label">Guru Pengampu</label><select id="c-teacher" class="form-control">${guruOpts}</select></div>
+          <div class="form-group mb-2"><label class="form-label">Jurusan</label>
+            <select id="c-major" class="form-control">
+              <option value="Umum">Umum (Semua Jurusan)</option>
+              <option value="RPL">RPL (Rekayasa Perangkat Lunak)</option>
+              <option value="SIJA">SIJA (Sistem Informatika Jaringan & Aplikasi)</option>
+              <option value="TKJ">TKJ (Teknik Komputer & Jaringan)</option>
+              <option value="DKV">DKV (Desain Komunikasi Visual)</option>
+              <option value="TP">TP (Teknik Pemesinan)</option>
+              <option value="TKR">TKR (Teknik Kendaraan Ringan)</option>
+              <option value="TE">TE (Teknik Elektronika)</option>
+            </select>
+          </div>
+          <div class="form-group mb-2"><label class="form-label">Kelas / Rombel Target</label><select id="c-class" class="form-control">${classOpts}</select></div>
+          <div class="form-group mb-3"><label class="form-label">Ikon (Emoji)</label><input type="text" id="c-icon" class="form-control" value="📚" maxlength="8"></div>
+          <div class="flex-end flex-gap-1"><button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Simpan Mapel</button></div>
+        </form>
+      `);
+    });
+  },
+
+  handleAddCourse(e) {
+    e.preventDefault();
+    fetch('api/courses.php', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create',
+        course_code: document.getElementById('c-code').value,
+        course_name: document.getElementById('c-name').value,
+        teacher_id: document.getElementById('c-teacher').value,
+        major: document.getElementById('c-major').value,
+        class_id: document.getElementById('c-class').value,
+        icon: document.getElementById('c-icon').value
+      })
+    }).then(r => r.json()).then(d => { if (d.success) { this.closeModal(); this.loadCourses(); } else alert(d.message); });
+  },
+
+  openEditCourseModal(courseId) {
+    Promise.all([
+      fetch('api/courses.php').then(r => r.json()),
+      fetch('api/classes.php').then(r => r.json()),
+      fetch('api/users.php?role=guru').then(r => r.json())
+    ]).then(([dCourses, dClasses, dGurus]) => {
+      const courses = dCourses.courses || [];
+      const course = courses.find(c => c.id == courseId);
+      if (!course) return;
+
+      const classes = dClasses.classes || [];
+      const gurus = dGurus.users || [];
+      const classOpts = `<option value="">- Semua Kelas (Umum) -</option>` +
+        classes.map(cl => `<option value="${cl.id}" ${cl.id == course.class_id ? 'selected' : ''}>${this.escHtml(cl.class_name)}</option>`).join('');
+      const guruOpts = `<option value="">- Pilih Guru Pengampu -</option>` +
+        gurus.map(g => `<option value="${g.id}" ${g.id == course.teacher_id ? 'selected' : ''}>${this.escHtml(g.name)} (${g.nip_nis || g.username})</option>`).join('');
+
+      this.openModal('Edit Mata Pelajaran', `
+        <form onsubmit="App.handleEditCourse(event, ${courseId})">
+          <div class="form-group mb-2">
+            <label class="form-label">Kode Mapel</label>
+            <input type="text" id="ec-code" class="form-control" value="${this.escHtml(course.course_code)}" required>
+          </div>
+          <div class="form-group mb-2">
+            <label class="form-label">Nama Mata Pelajaran</label>
+            <input type="text" id="ec-name" class="form-control" value="${this.escHtml(course.course_name)}" required>
+          </div>
+          <div class="form-group mb-2">
+            <label class="form-label">Deskripsi</label>
+            <textarea id="ec-desc" class="form-control" rows="2">${this.escHtml(course.description || '')}</textarea>
+          </div>
+          <div class="form-group mb-2">
+            <label class="form-label">Guru Pengampu</label>
+            <select id="ec-teacher" class="form-control">${guruOpts}</select>
+          </div>
+          <div class="form-group mb-2">
+            <label class="form-label">Jurusan</label>
+            <select id="ec-major" class="form-control">
+              <option value="Umum" ${course.major === 'Umum' ? 'selected' : ''}>Umum (Semua Jurusan)</option>
+              <option value="RPL" ${course.major === 'RPL' ? 'selected' : ''}>RPL (Rekayasa Perangkat Lunak)</option>
+              <option value="SIJA" ${course.major === 'SIJA' ? 'selected' : ''}>SIJA (Sistem Informatika Jaringan & Aplikasi)</option>
+              <option value="TKJ" ${course.major === 'TKJ' ? 'selected' : ''}>TKJ (Teknik Komputer & Jaringan)</option>
+              <option value="DKV" ${course.major === 'DKV' ? 'selected' : ''}>DKV (Desain Komunikasi Visual)</option>
+              <option value="TP" ${course.major === 'TP' ? 'selected' : ''}>TP (Teknik Pemesinan)</option>
+              <option value="TKR" ${course.major === 'TKR' ? 'selected' : ''}>TKR (Teknik Kendaraan Ringan)</option>
+              <option value="TE" ${course.major === 'TE' ? 'selected' : ''}>TE (Teknik Elektronika)</option>
+            </select>
+          </div>
+          <div class="form-group mb-2">
+            <label class="form-label">Kelas Target</label>
+            <select id="ec-class" class="form-control">${classOpts}</select>
+          </div>
+          <div class="form-group mb-3">
+            <label class="form-label">Ikon (Emoji)</label>
+            <input type="text" id="ec-icon" class="form-control" value="${this.escHtml(course.icon || '📚')}" maxlength="8">
+          </div>
+          <div class="flex-end flex-gap-1">
+            <button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button>
+            <button type="submit" class="btn btn-primary">💾 Simpan Perubahan</button>
+          </div>
+        </form>
+      `);
+    });
+  },
+
+  handleEditCourse(e, courseId) {
+    e.preventDefault();
+    fetch('api/courses.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'update',
+        course_id: courseId,
+        course_code: document.getElementById('ec-code').value,
+        course_name: document.getElementById('ec-name').value,
+        description: document.getElementById('ec-desc').value,
+        teacher_id: document.getElementById('ec-teacher').value,
+        major: document.getElementById('ec-major').value,
+        class_id: document.getElementById('ec-class').value,
+        icon: document.getElementById('ec-icon').value
+      })
+    }).then(r => r.json()).then(d => {
+      if (d.success) {
+        this.closeModal();
+        this._toast('✅ Mata pelajaran berhasil diperbarui.');
+        this.loadCourses();
+      } else alert(d.message);
+    });
+  },
+
+  deleteCourse(id) {
+    if (!confirm('Hapus mata pelajaran ini?')) return;
+    fetch('api/courses.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', course_id: id }) }).then(() => this.loadCourses());
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     COURSE DETAIL PAGE (4 Tabs: Materi, Tugas, Diskusi, Informasi)
+  ──────────────────────────────────────────────────────────────────────────── */
+  openCourseDetail(courseId, activeTab = 'materials') {
+    fetch(`api/course_detail.php?action=overview&course_id=${courseId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) { alert(data.message || 'Gagal memuat detail kelas.'); return; }
+        const c = data.data;
+        const stats = data.stats || {};
+        const isStaff = this.currentUser.role !== 'siswa';
+
+        let tabNav = `
+          <div class="hero-banner mb-3" style="border-left: 5px solid var(--accent);">
+            <div style="font-size:2.8rem; margin-right:1rem;">${c.icon || '📚'}</div>
+            <div style="flex:1;">
+              <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.25rem;">
+                <span class="badge badge-cyan">${this.escHtml(c.course_code)}</span>
+                <span class="badge badge-amber">${this.escHtml(c.major || 'Umum')}</span>
+                <span class="badge badge-green">${this.escHtml(c.class_name || 'Semua Rombel')}</span>
+              </div>
+              <h2 class="hero-title" style="margin:0.25rem 0;">${this.escHtml(c.course_name)}</h2>
+              <div style="color:rgba(255,255,255,0.85);font-size:0.88rem;">
+                👨‍🏫 Pengampu: <b>${this.escHtml(c.teacher_name || 'Belum ditugaskan')}</b> &bull;
+                📁 ${stats.materials || 0} Materi &bull; 📝 ${stats.assignments || 0} Tugas &bull; 💬 ${stats.discussions || 0} Diskusi
+              </div>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="App.loadCourses()" style="align-self:flex-start;">⬅ Kembali</button>
+          </div>
+
+          <div class="tabs-bar mb-3" style="display:flex;gap:0.5rem;border-bottom:1px solid var(--border);padding-bottom:0.5rem;flex-wrap:wrap;">
+            <button class="btn btn-sm ${activeTab === 'materials' ? 'btn-primary' : 'btn-secondary'}" onclick="App.openCourseDetail(${courseId}, 'materials')">📁 Materi (${stats.materials || 0})</button>
+            <button class="btn btn-sm ${activeTab === 'assignments' ? 'btn-primary' : 'btn-secondary'}" onclick="App.openCourseDetail(${courseId}, 'assignments')">📝 Tugas (${stats.assignments || 0})</button>
+            <button class="btn btn-sm ${activeTab === 'discussions' ? 'btn-primary' : 'btn-secondary'}" onclick="App.openCourseDetail(${courseId}, 'discussions')">💬 Diskusi (${stats.discussions || 0})</button>
+            <button class="btn btn-sm ${activeTab === 'info' ? 'btn-primary' : 'btn-secondary'}" onclick="App.openCourseDetail(${courseId}, 'info')">ℹ️ Informasi</button>
+          </div>
+
+          <div id="course-tab-container">Memuat konten tab...</div>
+        `;
+
+        this.setContent(tabNav);
+
+        if (activeTab === 'materials') this._renderCourseMaterials(courseId, isStaff);
+        else if (activeTab === 'assignments') this._renderCourseAssignments(courseId, isStaff);
+        else if (activeTab === 'discussions') this._renderCourseDiscussions(courseId);
+        else if (activeTab === 'info') this._renderCourseInfo(c, stats);
+      });
+  },
+
+  _renderCourseMaterials(courseId, isStaff) {
+    fetch(`api/course_detail.php?action=materials&course_id=${courseId}`)
+      .then(r => r.json())
+      .then(d => {
+        const materials = d.data || [];
+        const container = document.getElementById('course-tab-container');
+        if (!container) return;
+
+        const typeIcon = { pdf: '📄', video: '🎥', link: '🔗', text: '📝' };
+
+        const itemsHtml = materials.length ? materials.map((m, i) => `
+          <div class="card mb-2" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:1rem;flex:1;min-width:260px;">
+              <div style="font-size:2rem;">${typeIcon[m.type] || '📄'}</div>
+              <div>
+                <div style="font-weight:600;font-size:1rem;color:var(--text-main);">${this.escHtml(m.title)}</div>
+                <div style="font-size:0.82rem;color:var(--text-muted);margin-top:0.2rem;">
+                  Tipe: <span class="badge badge-cyan" style="text-transform:uppercase;">${m.type}</span> &bull;
+                  Diunggah oleh: <b>${this.escHtml(m.uploader || 'Guru')}</b> &bull;
+                  ${m.created_at ? new Date(m.created_at).toLocaleDateString('id-ID', {day:'numeric',month:'short',year:'numeric'}) : ''}
+                </div>
+                ${m.content ? `<div style="margin-top:0.5rem;font-size:0.88rem;color:var(--text-sub);">${this.escHtml(m.content)}</div>` : ''}
+              </div>
+            </div>
+            <div style="display:flex;gap:0.5rem;">
+              ${m.content_url ? `<a href="${this.escHtml(m.content_url)}" target="_blank" class="btn btn-primary btn-sm">🔗 Buka / Unduh</a>` : ''}
+              ${isStaff ? `<button class="btn btn-danger btn-sm" onclick="App._deleteMaterial(${courseId}, ${m.id})">🗑️</button>` : ''}
+            </div>
+          </div>
+        `).join('') : `<div class="empty-state"><div class="empty-icon">📁</div><p>Belum ada materi pembelajaran yang diunggah.</p></div>`;
+
+        container.innerHTML = `
+          <div class="flex-between mb-3">
+            <div>
+              <div class="section-title" style="font-size:1.1rem;">📁 Modul & Materi Pembelajaran</div>
+              <div class="section-sub">Akses materi PDF, slide presentasi, tautan video, atau referensi online.</div>
+            </div>
+            ${isStaff ? `<button class="btn btn-primary btn-sm" onclick="App._openAddMaterialModal(${courseId})">➕ Upload Materi</button>` : ''}
+          </div>
+          <div>${itemsHtml}</div>
+        `;
+      });
+  },
+
+  _openAddMaterialModal(courseId) {
+    this.openModal('Tambah Materi Pembelajaran Baru', `
+      <form onsubmit="App._handleAddMaterial(event, ${courseId})">
+        <div class="form-group mb-2"><label class="form-label">Judul Materi</label><input type="text" id="mat-title" class="form-control" placeholder="cth: Modul 1 - Pengenalan HTML5 & CSS3" required></div>
+        <div class="form-group mb-2"><label class="form-label">Tipe Materi</label>
+          <select id="mat-type" class="form-control" onchange="document.getElementById('mat-url-group').style.display = this.value === 'text' ? 'none' : 'block'">
+            <option value="pdf">Dokumen PDF / Slide (PDF)</option>
+            <option value="video">Video Pembelajaran (YouTube / Link Video)</option>
+            <option value="link">Tautan Web / Sumber Belajar Eksternal</option>
+            <option value="text">Catatan Teks / Rangkuman Singkat</option>
+          </select>
+        </div>
+        <div class="form-group mb-2" id="mat-url-group"><label class="form-label">URL / Tautan Dokumen atau Video</label><input type="url" id="mat-url" class="form-control" placeholder="https://..."></div>
+        <div class="form-group mb-3"><label class="form-label">Deskripsi / Rangkuman Singkat</label><textarea id="mat-content" class="form-control" rows="3" placeholder="Deskripsi materi atau instruksi baca..."></textarea></div>
+        <div class="flex-end flex-gap-1"><button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Simpan Materi</button></div>
+      </form>
+    `);
+  },
+
+  _handleAddMaterial(e, courseId) {
+    e.preventDefault();
+    const body = {
+      title: document.getElementById('mat-title').value,
+      type: document.getElementById('mat-type').value,
+      content_url: document.getElementById('mat-url').value,
+      content: document.getElementById('mat-content').value
+    };
+    fetch(`api/course_detail.php?action=add_material&course_id=${courseId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(r => r.json()).then(res => {
+      if (res.success) {
+        this.closeModal();
+        this._renderCourseMaterials(courseId, true);
+        this._toast('✅ Materi berhasil ditambahkan!');
+      } else alert(res.message);
+    });
+  },
+
+  _deleteMaterial(courseId, materialId) {
+    if (!confirm('Hapus materi ini?')) return;
+    fetch(`api/course_detail.php?action=del_material&course_id=${courseId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: materialId })
+    }).then(r => r.json()).then(res => {
+      if (res.success) {
+        this._renderCourseMaterials(courseId, true);
+        this._toast('✅ Materi berhasil dihapus.');
+      } else alert(res.message);
+    });
+  },
+
+  _renderCourseAssignments(courseId, isStaff) {
+    fetch(`api/course_detail.php?action=assignments&course_id=${courseId}`)
+      .then(r => r.json())
+      .then(d => {
+        const assignments = d.data || [];
+        const container = document.getElementById('course-tab-container');
+        if (!container) return;
+
+        const itemsHtml = assignments.length ? assignments.map((a, i) => `
+          <div class="card mb-2" style="padding:1.25rem;">
+            <div class="flex-between mb-1">
+              <span class="quiz-card-title">${this.escHtml(a.title)}</span>
+              <span class="badge ${a.my_submitted_at ? 'badge-green' : 'badge-amber'}">
+                ${isStaff ? `${a.total_submissions || 0} Pengumpulan` : (a.my_submitted_at ? `Terkumpul (Nilai: ${a.my_score !== null ? a.my_score : 'Menunggu Penilaian'})` : 'Belum Mengumpulkan')}
+              </span>
+            </div>
+            <div style="color:var(--text-sub);font-size:0.88rem;margin-bottom:0.75rem;line-height:1.5;">${this.escHtml(a.description || 'Tidak ada deskripsi khusus.')}</div>
+            <div class="flex-between" style="font-size:0.82rem;color:var(--text-muted);border-top:1px solid var(--border);padding-top:0.75rem;flex-wrap:wrap;gap:0.5rem;">
+              <div>⏳ Tenggat: <b>${a.due_date ? new Date(a.due_date).toLocaleString('id-ID') : 'Tidak dibatasi'}</b> &bull; Nilai Maks: <b>${a.max_score}</b></div>
+              <div>
+                ${!isStaff ? `<button class="btn btn-primary btn-sm" onclick="App.openSubmitAssignmentModal(${a.id}, ${courseId})">📤 Kirim / Upload Tugas</button>` : ''}
+              </div>
+            </div>
+          </div>
+        `).join('') : `<div class="empty-state"><div class="empty-icon">📝</div><p>Belum ada tugas atau pekerjaan rumah.</p></div>`;
+
+        container.innerHTML = `
+          <div class="flex-between mb-3">
+            <div>
+              <div class="section-title" style="font-size:1.1rem;">📝 Tugas & Pekerjaan Siswa</div>
+              <div class="section-sub">Daftar tugas mandiri, proyek kejuruan, dan pekerjaan rumah.</div>
+            </div>
+            ${isStaff ? `<button class="btn btn-primary btn-sm" onclick="App.openAddAssignmentModal(${courseId})">➕ Buat Tugas Baru</button>` : ''}
+          </div>
+          <div>${itemsHtml}</div>
+        `;
+      });
+  },
+
+  openSubmitAssignmentModal(assignmentId, courseId) {
+    this.openModal('Kirim / Upload Tugas Siswa', `
+      <form onsubmit="App.handleSubmitAssignment(event, ${assignmentId}, ${courseId})">
+        <div class="form-group mb-2">
+          <label class="form-label">Tautan / Link Berkas Tugas (Google Drive / PDF / ZIP / URL)</label>
+          <input type="url" id="sub-filepath" class="form-control" placeholder="https://drive.google.com/file/... atau link dokumen tugas">
+        </div>
+        <div class="form-group mb-3">
+          <label class="form-label">Catatan / Jawaban Teks (opsional)</label>
+          <textarea id="sub-notes" class="form-control" rows="3" placeholder="Tuliskan catatan atau rangkuman hasil pengerjaan tugas Anda..."></textarea>
+        </div>
+        <div class="flex-end flex-gap-1">
+          <button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button>
+          <button type="submit" class="btn btn-primary">📤 Kirim Tugas</button>
+        </div>
+      </form>
+    `);
+  },
+
+  handleSubmitAssignment(e, assignmentId, courseId) {
+    e.preventDefault();
+    const body = {
+      assignment_id: assignmentId,
+      file_path: document.getElementById('sub-filepath').value,
+      notes: document.getElementById('sub-notes').value
+    };
+    fetch(`api/course_detail.php?action=submit_assignment&course_id=${courseId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(r => r.json()).then(res => {
+      if (res.success) {
+        this.closeModal();
+        this._renderCourseAssignments(courseId, false);
+        this._toast('✅ Tugas berhasil dikirim!');
+      } else alert(res.message);
+    });
+  },
+
+  openAddAssignmentModal(courseId) {
+    this.openModal('Buat Tugas Pembelajaran Baru', `
+      <form onsubmit="App.handleAddAssignment(event, ${courseId})">
+        <div class="form-group mb-2"><label class="form-label">Judul Tugas</label><input type="text" id="asg-title" class="form-control" placeholder="cth: Tugas 1 - Buat Halaman Web Responsive" required></div>
+        <div class="form-group mb-2"><label class="form-label">Deskripsi / Petunjuk Pengerjaan</label><textarea id="asg-desc" class="form-control" rows="3" placeholder="Petunjuk pengerjaan dan kriteria penilaian..."></textarea></div>
+        <div class="grid-2col mb-3" style="gap:0.75rem;">
+          <div class="form-group"><label class="form-label">Tenggat Waktu (Due Date)</label><input type="datetime-local" id="asg-due" class="form-control"></div>
+          <div class="form-group"><label class="form-label">Nilai Maksimal</label><input type="number" id="asg-max" class="form-control" value="100" min="10" max="100"></div>
+        </div>
+        <div class="flex-end flex-gap-1"><button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Simpan Tugas</button></div>
+      </form>
+    `);
+  },
+
+  handleAddAssignment(e, courseId) {
+    e.preventDefault();
+    const dueVal = document.getElementById('asg-due').value;
+    const body = {
+      title: document.getElementById('asg-title').value,
+      description: document.getElementById('asg-desc').value,
+      due_date: dueVal ? dueVal.replace('T', ' ') : null,
+      max_score: document.getElementById('asg-max').value
+    };
+    fetch(`api/course_detail.php?action=add_assignment&course_id=${courseId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(r => r.json()).then(res => {
+      if (res.success) {
+        this.closeModal();
+        this._renderCourseAssignments(courseId, true);
+        this._toast('✅ Tugas berhasil dibuat!');
+      } else alert(res.message);
+    });
+  },
+
+  _renderCourseDiscussions(courseId) {
+    fetch(`api/course_detail.php?action=discussions&course_id=${courseId}`)
+      .then(r => r.json())
+      .then(d => {
+        const threads = d.data || [];
+        const container = document.getElementById('course-tab-container');
+        if (!container) return;
+
+        const threadsHtml = threads.length ? threads.map(t => `
+          <div class="card mb-2" style="padding:1rem;">
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+              <span class="badge ${t.author_role === 'guru' ? 'badge-amber' : 'badge-cyan'}">${t.author_role}</span>
+              <span style="font-weight:600;font-size:0.9rem;color:var(--text-main);">${this.escHtml(t.author)}</span>
+              <span style="font-size:0.78rem;color:var(--text-muted);">${new Date(t.created_at).toLocaleString('id-ID')}</span>
+            </div>
+            <div style="font-size:0.88rem;color:var(--text-sub);line-height:1.6;margin-bottom:0.5rem;">${this.escHtml(t.message)}</div>
+            ${t.replies && t.replies.length ? `
+              <div style="margin-left:1.5rem;border-left:2px solid var(--border);padding-left:1rem;margin-top:0.5rem;">
+                ${t.replies.map(r => `
+                  <div style="font-size:0.82rem;margin-bottom:0.4rem;">
+                    <b>${this.escHtml(r.author)}:</b> ${this.escHtml(r.message)}
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+        `).join('') : `<div class="empty-state"><div class="empty-icon">💬</div><p>Belum ada diskusi. Mulai diskusi pertama kelas!</p></div>`;
+
+        container.innerHTML = `
+          <div class="card mb-3" style="padding:1rem;">
+            <div style="font-weight:600;margin-bottom:0.5rem;font-size:0.92rem;">💬 Kirim Pesan Diskusi Kelas</div>
+            <div style="display:flex;gap:0.5rem;">
+              <input type="text" id="disc-msg" class="form-control" placeholder="Tulis pertanyaan atau tanggapan untuk kelas ini..." style="flex:1;">
+              <button class="btn btn-primary" onclick="App._sendDiscussion(${courseId})">Kirim 🚀</button>
+            </div>
+          </div>
+          <div>${threadsHtml}</div>
+        `;
+      });
+  },
+
+  _sendDiscussion(courseId) {
+    const input = document.getElementById('disc-msg');
+    const msg = input ? input.value.trim() : '';
+    if (!msg) return;
+
+    fetch(`api/course_detail.php?action=discussions&course_id=${courseId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
+    }).then(r => r.json()).then(res => {
+      if (res.success) {
+        input.value = '';
+        this._renderCourseDiscussions(courseId);
+        this._toast('✅ Pesan diskusi terkirim.');
+      } else alert(res.message);
+    });
+  },
+
+  _renderCourseInfo(c, stats) {
+    const container = document.getElementById('course-tab-container');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="card" style="padding:1.5rem;">
+        <h3 style="margin-bottom:1rem;font-size:1.1rem;color:var(--text-main);">Informasi Lengkap Mata Pelajaran</h3>
+        <table class="data-table mb-3">
+          <tbody>
+            <tr><td style="width:200px;font-weight:600;">Kode Mata Pelajaran</td><td><code>${this.escHtml(c.course_code)}</code></td></tr>
+            <tr><td style="font-weight:600;">Nama Mata Pelajaran</td><td><b>${this.escHtml(c.course_name)}</b></td></tr>
+            <tr><td style="font-weight:600;">Jurusan Keahlian</td><td><span class="badge badge-amber">${this.escHtml(c.major || 'Umum')}</span></td></tr>
+            <tr><td style="font-weight:600;">Rombel / Kelas Sasaran</td><td>${this.escHtml(c.class_name || 'Semua Kelas')}</td></tr>
+            <tr><td style="font-weight:600;">Guru Pengampu</td><td>👨‍🏫 ${this.escHtml(c.teacher_name || 'Belum ditugaskan')}</td></tr>
+            <tr><td style="font-weight:600;">Total Evaluasi CBT</td><td>📝 ${stats.quizzes || 0} Paket Ujian Aktif</td></tr>
+            <tr><td style="font-weight:600;">Deskripsi Mapel</td><td>${this.escHtml(c.description || 'Mata pelajaran kejuruan kurikulum merdeka SMKN 1 CIBINONG.')}</td></tr>
+          </tbody>
+        </table>
+        <div style="display:flex;gap:0.75rem;">
+          <button class="btn btn-primary" onclick="App.renderAppLayout('cbt')">📝 Buka Ujian CBT Mapel Ini</button>
+          <button class="btn btn-secondary" onclick="App.renderAppLayout('schedules')">📅 Cek Jadwal Kelas</button>
+        </div>
+      </div>
+    `;
+  },
+
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     CLASSES
+  ──────────────────────────────────────────────────────────────────────────── */
+  loadClasses() {
+    fetch('api/classes.php')
+      .then(r => r.json())
+      .then(data => {
+        const classes = data.classes || [];
+        const isStaff = this.currentUser.role !== 'siswa';
+
+        const rows = classes.length ? classes.map((cl, i) => `
+          <tr>
+            <td class="td-mono">${i + 1}</td>
+            <td class="td-main">${this.escHtml(cl.class_name)}</td>
+            <td><span class="badge badge-amber">${this.escHtml(cl.major || 'Umum')}</span></td>
+            <td>${this.escHtml(cl.academic_year)}</td>
+            <td><span class="badge badge-cyan">${cl.total_students !== undefined ? cl.total_students : (cl.student_count || 0)} siswa</span></td>
+            <td>${isStaff ? `<button class="btn btn-danger btn-sm" onclick="App.deleteClass(${cl.id})">🗑️ Hapus</button>` : '—'}</td>
+          </tr>
+        `).join('') : `<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">🏛️</div><p>Belum ada kelas.</p></div></td></tr>`;
+
+        this.setContent(`
+          <div class="flex-between mb-3">
+            <div>
+              <div class="section-title">🏛️ Kelas & Rombel</div>
+              <div class="section-sub">Manajemen kelas dan rombongan belajar SMKN 1 CIBINONG.</div>
+            </div>
+            ${isStaff ? `<button class="btn btn-primary" onclick="App.openAddClassModal()">➕ Tambah Kelas</button>` : ''}
+          </div>
+          <div class="card">
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead><tr><th>#</th><th>Nama Kelas</th><th>Jurusan</th><th>Tahun Ajaran</th><th>Jumlah Siswa</th><th>Aksi</th></tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        `);
+      });
+  },
+
+  openAddClassModal() {
+    this.openModal('Tambah Kelas / Rombel Baru', `
+      <form onsubmit="App.handleAddClass(event)">
+        <div class="form-group mb-2">
+          <label class="form-label">Nama Kelas / Rombel</label>
+          <input type="text" id="cl-name" class="form-control" placeholder="cth: XI SIJA 1 atau XI SIJA 2" required>
+        </div>
+        <div class="form-group mb-2">
+          <label class="form-label">Jurusan</label>
+          <select id="cl-major" class="form-control">
+            <option value="RPL">RPL (Rekayasa Perangkat Lunak)</option>
+            <option value="SIJA">SIJA (Sistem Informatika Jaringan & Aplikasi)</option>
+            <option value="TKJ">TKJ (Teknik Komputer & Jaringan)</option>
+            <option value="Umum">Umum</option>
+          </select>
+        </div>
+        <div class="form-group mb-3">
+          <label class="form-label">Tahun Ajaran</label>
+          <input type="text" id="cl-year" class="form-control" value="2026/2027" required>
+        </div>
+        <div class="flex-end flex-gap-1">
+          <button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button>
+          <button type="submit" class="btn btn-primary">Simpan Kelas</button>
+        </div>
+      </form>
+    `);
+  },
+
+  handleAddClass(e) {
+    e.preventDefault();
+    fetch('api/classes.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create',
+        class_name: document.getElementById('cl-name').value,
+        major: document.getElementById('cl-major').value,
+        academic_year: document.getElementById('cl-year').value
+      })
+    })
+      .then(r => r.json()).then(d => { if (d.success) { this.closeModal(); this.loadClasses(); } else alert(d.message); });
+  },
+
+  deleteClass(id) {
+    if (!confirm('Hapus kelas ini?')) return;
+    fetch('api/classes.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', class_id: id }) }).then(() => this.loadClasses());
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     SCHEDULES
+  ──────────────────────────────────────────────────────────────────────────── */
+  loadSchedules() {
+    fetch('api/schedules.php')
+      .then(r => r.json())
+      .then(data => {
+        const schedules = data.data || [];
+        const isStaff = this.currentUser.role !== 'siswa';
+
+        const rows = schedules.length ? schedules.map((s, i) => `
+          <tr>
+            <td class="td-mono">${i + 1}</td>
+            <td class="td-main">${this.escHtml(s.course_name)}</td>
+            <td><span class="badge badge-cyan">${s.day_of_week}</span></td>
+            <td class="td-mono">${s.start_time.slice(0, 5)} - ${s.end_time.slice(0, 5)}</td>
+            <td>${this.escHtml(s.class_name)}</td>
+            <td>${this.escHtml(s.room || '-')}</td>
+            <td>${this.escHtml(s.teacher_name || '-')}</td>
+            ${isStaff ? `<td><button class="btn btn-danger btn-sm" onclick="App.deleteSchedule(${s.id})">🗑️</button></td>` : ''}
+          </tr>
+        `).join('') : `<tr><td colspan="${isStaff ? 8 : 7}"><div class="empty-state"><div class="empty-icon">📅</div><p>Belum ada jadwal kelas.</p></div></td></tr>`;
+
+        this.setContent(`
+          <div class="flex-between mb-3">
+            <div>
+              <div class="section-title">📅 Jadwal Kelas</div>
+              <div class="section-sub">Informasi jadwal mata pelajaran harian.</div>
+            </div>
+            ${isStaff ? `<button class="btn btn-primary" onclick="App.openAddScheduleModal()">➕ Tambah Jadwal</button>` : ''}
+          </div>
+          <div class="card">
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th><th>Mata Pelajaran</th><th>Hari</th><th>Jam</th><th>Kelas</th><th>Ruang</th><th>Guru/Pembuat</th>${isStaff ? '<th>Aksi</th>' : ''}
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        `);
+      });
+  },
+
+  openAddScheduleModal() {
+    Promise.all([
+      fetch('api/courses.php').then(r => r.json()),
+      fetch('api/classes.php').then(r => r.json())
+    ]).then(([dCrs, dCls]) => {
+      const courses = dCrs.courses || [];
+      const classes = dCls.classes || [];
+      const optC = courses.map(c => `<option value="${c.id}">${this.escHtml(c.course_name)}</option>`).join('');
+      const optCl = classes.map(c => `<option value="${c.id}">${this.escHtml(c.class_name)}</option>`).join('');
+      
+      this.openModal('Tambah Jadwal Baru', `
+        <form onsubmit="App.handleAddSchedule(event)">
+          <div class="form-group mb-2"><label class="form-label">Mata Pelajaran</label><select id="sch-course" class="form-control" required>${optC}</select></div>
+          <div class="form-group mb-2"><label class="form-label">Kelas</label><select id="sch-class" class="form-control" required>${optCl}</select></div>
+          <div class="form-group mb-2"><label class="form-label">Hari</label>
+            <select id="sch-day" class="form-control" required>
+              <option value="Senin">Senin</option><option value="Selasa">Selasa</option>
+              <option value="Rabu">Rabu</option><option value="Kamis">Kamis</option>
+              <option value="Jumat">Jumat</option><option value="Sabtu">Sabtu</option>
+            </select>
+          </div>
+          <div style="display:flex; gap:1rem;" class="mb-2">
+            <div class="form-group" style="flex:1;"><label class="form-label">Jam Mulai</label><input type="time" id="sch-start" class="form-control" required></div>
+            <div class="form-group" style="flex:1;"><label class="form-label">Jam Selesai</label><input type="time" id="sch-end" class="form-control" required></div>
+          </div>
+          <div class="form-group mb-3"><label class="form-label">Ruang (Opsional)</label><input type="text" id="sch-room" class="form-control" placeholder="cth: Lab Komputer 1"></div>
+          <div class="flex-end flex-gap-1"><button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Simpan</button></div>
+        </form>
+      `);
+    });
+  },
+
+  handleAddSchedule(e) {
+    e.preventDefault();
+    const formData = new URLSearchParams();
+    formData.append('course_id', document.getElementById('sch-course').value);
+    formData.append('class_id', document.getElementById('sch-class').value);
+    formData.append('day_of_week', document.getElementById('sch-day').value);
+    formData.append('start_time', document.getElementById('sch-start').value);
+    formData.append('end_time', document.getElementById('sch-end').value);
+    formData.append('room', document.getElementById('sch-room').value);
+
+    fetch('api/schedules.php', { method: 'POST', body: formData })
+      .then(r => r.json()).then(d => { if (d.success) { this.closeModal(); this.loadSchedules(); } else alert(d.message); });
+  },
+
+  deleteSchedule(id) {
+    if (!confirm('Hapus jadwal kelas ini?')) return;
+    fetch('api/schedules.php', { method: 'DELETE', body: 'id='+id, headers: {'Content-Type': 'application/x-www-form-urlencoded'} })
+      .then(() => this.loadSchedules());
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     CBT
+  ──────────────────────────────────────────────────────────────────────────── */
+  loadCbt() {
+    if (this.currentUser.role === 'siswa') this.loadStudentCbt();
+    else this.loadTeacherCbt();
+  },
+
+  // TEACHER CBT VIEW
+  loadTeacherCbt() {
+    fetch('api/quizzes.php')
+      .then(r => r.json())
+      .then(data => {
+        const quizzes = data.quizzes || data.data || [];
+        const cards = quizzes.length ? quizzes.map(q => {
+          const qCount = q.question_count !== undefined ? q.question_count : (q.total_questions !== undefined ? q.total_questions : 0);
+          return `
+          <div class="quiz-card">
+            <div>
+              <div class="quiz-card-meta">
+                <span class="badge badge-cyan">${qCount} Soal</span>
+                <span class="badge badge-amber">⏱ ${q.duration_minutes} Menit</span>
+                <span class="badge badge-green">KKM: ${q.kkm || 70}</span>
+                <span class="badge ${q.status === 'active' ? 'badge-green' : 'badge-muted'}">${q.status}</span>
+              </div>
+              <div class="quiz-card-title">${this.escHtml(q.title)}</div>
+              <div class="quiz-card-desc">${this.escHtml(q.description || 'Tidak ada deskripsi.')}</div>
+            </div>
+            <div class="quiz-card-actions">
+              <button class="btn btn-outline btn-full" onclick="App.openManageQuestions(${q.id})">📝 Kelola Soal (${qCount})</button>
+              <div class="flex-gap-1 mt-1">
+                <button class="btn btn-secondary" style="flex:1;justify-content:center;" onclick="App.openExamResultsPanel(${q.id})">📊 Hasil & Reset</button>
+                <button class="btn btn-secondary" style="flex:1;justify-content:center;" onclick="App.openMonitoringModal(${q.id})">🛡️ Monitoring</button>
+              </div>
+              <div class="flex-gap-1 mt-1">
+                <button class="btn btn-secondary btn-sm" onclick="App.openEditQuizModal(${q.id})" title="Edit Ujian" style="flex:1;">✏️ Edit</button>
+                <button class="btn btn-danger btn-sm" onclick="App.deleteQuiz(${q.id})" title="Hapus Ujian" style="flex:1;">🗑️ Hapus</button>
+              </div>
+            </div>
+          </div>
+        `;}).join('') : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">📝</div><p>Belum ada paket ujian. Buat ujian pertama Anda!</p></div>`;
+
+        this.setContent(`
+          <div class="flex-between mb-3">
+            <div>
+              <div class="section-title">📝 Manajemen Ujian CBT</div>
+              <div class="section-sub">Buat soal, kelola ujian, dan pantau deteksi kecurangan siswa.</div>
+            </div>
+            <button class="btn btn-primary" onclick="App.openCreateQuizModal()">➕ Buat Ujian Baru</button>
+          </div>
+          <div class="cards-grid">${cards}</div>
+        `);
+      });
+  },
+
+  openCreateQuizModal() {
+    this.openModal('Buat Paket Ujian CBT Baru', `
+      <form onsubmit="App.handleCreateQuiz(event)">
+        <div class="form-group mb-2"><label class="form-label">Judul Ujian</label><input type="text" id="qz-title" class="form-control" placeholder="cth: UTS Pemrograman Web Ganjil 2026" required></div>
+        <div class="form-group mb-2"><label class="form-label">Deskripsi / Instruksi</label><textarea id="qz-desc" class="form-control" rows="3" placeholder="Instruksi pengerjaan ujian…"></textarea></div>
+        <div style="display:flex;gap:0.75rem;" class="mb-2">
+          <div class="form-group" style="flex:1;"><label class="form-label">Durasi (Menit)</label><input type="number" id="qz-dur" class="form-control" value="45" min="5" max="180" required></div>
+          <div class="form-group" style="flex:1;"><label class="form-label">KKM (0-100)</label><input type="number" id="qz-kkm" class="form-control" value="70" min="0" max="100" required></div>
+        </div>
+        <div class="form-group mb-3"><label class="form-label">Status Awal</label>
+          <select id="qz-status" class="form-control">
+            <option value="active">Active (Langsung Dapat Diakses)</option>
+            <option value="draft">Draft (Simpan Draf Terlebih Dahulu)</option>
+          </select>
+        </div>
+        <div class="flex-end flex-gap-1"><button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Buat Ujian</button></div>
+      </form>
+    `);
+  },
+
+  handleCreateQuiz(e) {
+    e.preventDefault();
+    fetch('api/quizzes.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create',
+        title: document.getElementById('qz-title').value,
+        description: document.getElementById('qz-desc').value,
+        duration_minutes: document.getElementById('qz-dur').value,
+        kkm: document.getElementById('qz-kkm') ? document.getElementById('qz-kkm').value : 70,
+        status: document.getElementById('qz-status') ? document.getElementById('qz-status').value : 'active'
+      })
+    })
+      .then(r => r.json()).then(d => {
+        if (d.success) {
+          this.closeModal();
+          this.loadTeacherCbt();
+          this._toast('✅ Paket ujian berhasil dibuat.');
+        } else alert(d.message);
+      });
+  },
+
+  openEditQuizModal(quizId) {
+    fetch(`api/quizzes.php?action=detail&id=${quizId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!d.success) { alert(d.message || 'Gagal memuat detail ujian.'); return; }
+        const q = d.data;
+        this.openModal('Edit Paket Ujian CBT', `
+          <form onsubmit="App.handleEditQuiz(event, ${quizId})">
+            <div class="form-group mb-2"><label class="form-label">Judul Ujian</label><input type="text" id="eqz-title" class="form-control" value="${this.escHtml(q.title)}" required></div>
+            <div class="form-group mb-2"><label class="form-label">Deskripsi / Instruksi</label><textarea id="eqz-desc" class="form-control" rows="3">${this.escHtml(q.description || '')}</textarea></div>
+            <div style="display:flex;gap:0.75rem;" class="mb-2">
+              <div class="form-group" style="flex:1;"><label class="form-label">Durasi (Menit)</label><input type="number" id="eqz-dur" class="form-control" value="${q.duration_minutes || 45}" min="5" max="180" required></div>
+              <div class="form-group" style="flex:1;"><label class="form-label">KKM</label><input type="number" id="eqz-kkm" class="form-control" value="${q.kkm || 70}" min="0" max="100" required></div>
+            </div>
+            <div style="display:flex;gap:0.75rem;" class="mb-3">
+              <div class="form-group" style="flex:1;"><label class="form-label">Status</label>
+                <select id="eqz-status" class="form-control">
+                  <option value="active" ${q.status === 'active' ? 'selected' : ''}>Active (Siap Dikerjakan)</option>
+                  <option value="draft" ${q.status === 'draft' ? 'selected' : ''}>Draft (Ditutup)</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex:1;"><label class="form-label">Tanggal Rilis (Opsional)</label><input type="date" id="eqz-release" class="form-control" value="${q.release_date || ''}"></div>
+            </div>
+            <div class="flex-end flex-gap-1"><button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Simpan Perubahan</button></div>
+          </form>
+        `);
+      });
+  },
+
+  handleEditQuiz(e, quizId) {
+    e.preventDefault();
+    fetch('api/quizzes.php', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: quizId,
+        title: document.getElementById('eqz-title').value,
+        description: document.getElementById('eqz-desc').value,
+        duration_minutes: document.getElementById('eqz-dur').value,
+        kkm: document.getElementById('eqz-kkm').value,
+        status: document.getElementById('eqz-status').value,
+        release_date: document.getElementById('eqz-release').value || null
+      })
+    }).then(r => r.json()).then(d => {
+      if (d.success) {
+        this.closeModal();
+        this.loadTeacherCbt();
+        this._toast('✅ Paket ujian berhasil diperbarui.');
+      } else alert(d.message);
+    });
+  },
+
+  deleteQuiz(id) {
+    if (!confirm('Hapus ujian ini beserta semua soalnya?')) return;
+    fetch('api/quizzes.php', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) })
+      .then(r => r.json())
+      .then(() => {
+        this.loadTeacherCbt();
+        this._toast('✅ Paket ujian dihapus.');
+      });
+  },
+
+  openManageQuestions(quizId) {
+    fetch(`api/questions.php?quiz_id=${quizId}`)
+      .then(r => r.json())
+      .then(data => {
+        const questions = data.questions || [];
+        const rows = questions.length ? questions.map((q, i) => {
+          const isEssay = q.type === 'essay';
+          return `
+          <tr>
+            <td class="td-mono">${i + 1}</td>
+            <td><span class="badge ${isEssay ? 'badge-amber' : 'badge-cyan'}">${isEssay ? 'Essai' : 'Pilihan Ganda'}</span></td>
+            <td class="td-main" style="max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escHtml(q.question_text)}</td>
+            <td>
+              ${isEssay 
+                ? `<span class="badge badge-amber" title="${this.escHtml(q.essay_answer || 'Pedoman manual')}">Pedoman Guru</span>` 
+                : `<span class="badge badge-green">Jwb: ${q.correct_option}</span>`}
+            </td>
+            <td><span class="badge badge-cyan">${q.points || 1} Poin</span></td>
+            <td>
+              <div style="display:flex;gap:0.35rem;">
+                <button class="btn btn-secondary btn-sm" onclick="App.openEditQuestionModal(${q.id}, ${quizId})" title="Edit Soal">✏️</button>
+                <button class="btn btn-danger btn-sm" onclick="App.deleteQuestion(${q.id}, ${quizId})" title="Hapus Soal">🗑️</button>
+              </div>
+            </td>
+          </tr>
+        `;}).join('') : `<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">📝</div><p>Belum ada soal. Tambah soal pertama!</p></div></td></tr>`;
+
+        this.openModal('Kelola Soal Ujian', `
+          <div class="flex-between mb-2">
+            <span class="badge badge-cyan">${questions.length} Soal Terdaftar</span>
+            <button class="btn btn-primary btn-sm" onclick="App.openAddQuestionModal(${quizId})">➕ Tambah Soal</button>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead><tr><th>#</th><th>Tipe</th><th>Pertanyaan</th><th>Kunci / Pedoman</th><th>Bobot</th><th>Aksi</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        `, 'modal-box modal-box-lg');
+      });
+  },
+
+  openAddQuestionModal(quizId) {
+    this.closeModal();
+    this.openModal('Tambah Soal Baru', `
+      <form onsubmit="App.handleAddQuestion(event,${quizId})">
+        <div class="form-group mb-2">
+          <label class="form-label">Tipe Soal</label>
+          <select id="q-type" class="form-control" onchange="App._toggleQuestionType(this.value)">
+            <option value="multiple_choice">Pilihan Ganda (A, B, C, D)</option>
+            <option value="essay">Essai / Uraian</option>
+          </select>
+        </div>
+        <div class="form-group mb-2">
+          <label class="form-label">Teks Pertanyaan</label>
+          <textarea id="q-text" class="form-control" rows="3" required placeholder="Masukkan teks pertanyaan soal…"></textarea>
+        </div>
+        <div id="q-mc-group">
+          <div class="grid-2col mb-2" style="gap:0.6rem;">
+            <div class="form-group"><label class="form-label">Pilihan A</label><input type="text" id="q-a" class="form-control"></div>
+            <div class="form-group"><label class="form-label">Pilihan B</label><input type="text" id="q-b" class="form-control"></div>
+            <div class="form-group"><label class="form-label">Pilihan C</label><input type="text" id="q-c" class="form-control"></div>
+            <div class="form-group"><label class="form-label">Pilihan D</label><input type="text" id="q-d" class="form-control"></div>
+          </div>
+          <div class="form-group mb-2"><label class="form-label">Kunci Jawaban Benar</label>
+            <select id="q-key" class="form-control">
+              <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
+            </select>
+          </div>
+        </div>
+        <div id="q-essay-group" style="display:none;" class="mb-2">
+          <div class="form-group"><label class="form-label">Pedoman Penilaian / Kunci Jawaban Essai</label>
+            <textarea id="q-essay-ans" class="form-control" rows="3" placeholder="Kriteria jawaban benar untuk panduan penilaian guru…"></textarea>
+          </div>
+        </div>
+        <div class="form-group mb-3"><label class="form-label">Bobot Poin</label>
+          <input type="number" id="q-points" class="form-control" value="1" min="1" max="100">
+        </div>
+        <div class="flex-end flex-gap-1"><button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Simpan Soal</button></div>
+      </form>
+    `);
+  },
+
+  _toggleQuestionType(type) {
+    const mc = document.getElementById('q-mc-group');
+    const es = document.getElementById('q-essay-group');
+    if (mc && es) {
+      mc.style.display = type === 'multiple_choice' ? 'block' : 'none';
+      es.style.display = type === 'essay' ? 'block' : 'none';
+    }
+  },
+
+  handleAddQuestion(e, quizId) {
+    e.preventDefault();
+    const type = document.getElementById('q-type').value;
+    const body = {
+      action: 'create',
+      quiz_id: quizId,
+      type: type,
+      question_text: document.getElementById('q-text').value,
+      points: document.getElementById('q-points').value || 1
+    };
+    if (type === 'multiple_choice') {
+      body.option_a = document.getElementById('q-a').value;
+      body.option_b = document.getElementById('q-b').value;
+      body.option_c = document.getElementById('q-c').value;
+      body.option_d = document.getElementById('q-d').value;
+      body.correct_option = document.getElementById('q-key').value;
+    } else {
+      body.essay_answer = document.getElementById('q-essay-ans').value;
+    }
+
+    fetch('api/questions.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(r => r.json()).then(d => {
+      if (d.success) {
+        this.closeModal();
+        this.openManageQuestions(quizId);
+        this._toast('✅ Soal berhasil ditambahkan!');
+      } else alert(d.message);
+    });
+  },
+
+  openEditQuestionModal(qId, quizId) {
+    fetch(`api/questions.php?quiz_id=${quizId}`)
+      .then(r => r.json())
+      .then(data => {
+        const questions = data.questions || [];
+        const q = questions.find(item => item.id == qId);
+        if (!q) { alert('Data soal tidak ditemukan.'); return; }
+
+        this.closeModal();
+        const isEssay = q.type === 'essay';
+
+        this.openModal('Edit Soal Ujian', `
+          <form onsubmit="App.handleEditQuestion(event, ${qId}, ${quizId})">
+            <div class="form-group mb-2">
+              <label class="form-label">Tipe Soal</label>
+              <select id="eq-type" class="form-control" onchange="App._toggleEditQuestionType(this.value)">
+                <option value="multiple_choice" ${!isEssay ? 'selected' : ''}>Pilihan Ganda (A, B, C, D)</option>
+                <option value="essay" ${isEssay ? 'selected' : ''}>Essai / Uraian</option>
+              </select>
+            </div>
+            <div class="form-group mb-2">
+              <label class="form-label">Teks Pertanyaan</label>
+              <textarea id="eq-text" class="form-control" rows="3" required>${this.escHtml(q.question_text)}</textarea>
+            </div>
+            <div id="eq-mc-group" style="${isEssay ? 'display:none;' : ''}">
+              <div class="grid-2col mb-2" style="gap:0.6rem;">
+                <div class="form-group"><label class="form-label">Pilihan A</label><input type="text" id="eq-a" class="form-control" value="${this.escHtml(q.option_a || '')}"></div>
+                <div class="form-group"><label class="form-label">Pilihan B</label><input type="text" id="eq-b" class="form-control" value="${this.escHtml(q.option_b || '')}"></div>
+                <div class="form-group"><label class="form-label">Pilihan C</label><input type="text" id="eq-c" class="form-control" value="${this.escHtml(q.option_c || '')}"></div>
+                <div class="form-group"><label class="form-label">Pilihan D</label><input type="text" id="eq-d" class="form-control" value="${this.escHtml(q.option_d || '')}"></div>
+              </div>
+              <div class="form-group mb-2"><label class="form-label">Kunci Jawaban Benar</label>
+                <select id="eq-key" class="form-control">
+                  <option value="A" ${q.correct_option === 'A' ? 'selected' : ''}>A</option>
+                  <option value="B" ${q.correct_option === 'B' ? 'selected' : ''}>B</option>
+                  <option value="C" ${q.correct_option === 'C' ? 'selected' : ''}>C</option>
+                  <option value="D" ${q.correct_option === 'D' ? 'selected' : ''}>D</option>
+                </select>
+              </div>
+            </div>
+            <div id="eq-essay-group" style="${!isEssay ? 'display:none;' : ''}" class="mb-2">
+              <div class="form-group"><label class="form-label">Pedoman Penilaian / Kunci Jawaban Essai</label>
+                <textarea id="eq-essay-ans" class="form-control" rows="3">${this.escHtml(q.essay_answer || '')}</textarea>
+              </div>
+            </div>
+            <div class="form-group mb-3"><label class="form-label">Bobot Poin</label>
+              <input type="number" id="eq-points" class="form-control" value="${q.points || 1}" min="1" max="100">
+            </div>
+            <div class="flex-end flex-gap-1"><button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Simpan Perubahan</button></div>
+          </form>
+        `);
+      });
+  },
+
+  _toggleEditQuestionType(type) {
+    const mc = document.getElementById('eq-mc-group');
+    const es = document.getElementById('eq-essay-group');
+    if (mc && es) {
+      mc.style.display = type === 'multiple_choice' ? 'block' : 'none';
+      es.style.display = type === 'essay' ? 'block' : 'none';
+    }
+  },
+
+  handleEditQuestion(e, qId, quizId) {
+    e.preventDefault();
+    const type = document.getElementById('eq-type').value;
+    const body = {
+      action: 'update',
+      id: qId,
+      type: type,
+      question_text: document.getElementById('eq-text').value,
+      points: document.getElementById('eq-points').value || 1
+    };
+    if (type === 'multiple_choice') {
+      body.option_a = document.getElementById('eq-a').value;
+      body.option_b = document.getElementById('eq-b').value;
+      body.option_c = document.getElementById('eq-c').value;
+      body.option_d = document.getElementById('eq-d').value;
+      body.correct_option = document.getElementById('eq-key').value;
+    } else {
+      body.essay_answer = document.getElementById('eq-essay-ans').value;
+    }
+
+    fetch('api/questions.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(r => r.json()).then(d => {
+      if (d.success) {
+        this.closeModal();
+        this.openManageQuestions(quizId);
+        this._toast('✅ Soal berhasil diperbarui!');
+      } else alert(d.message);
+    });
+  },
+
+  deleteQuestion(qId, quizId) {
+    if (!confirm('Hapus soal ini?')) return;
+    fetch('api/questions.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', question_id: qId }) })
+      .then(() => {
+        this.openManageQuestions(quizId);
+        this._toast('✅ Soal berhasil dihapus.');
+      });
+  },
+
+  // MONITORING MODAL — Incident Forensics
+  openMonitoringModal(quizId) {
+    fetch(`api/exam.php?action=monitor&quiz_id=${quizId}`)
+      .then(r => r.json())
+      .then(data => {
+        const attempts  = data.attempts || [];
+        const total     = attempts.length;
+        const clean     = attempts.filter(a => a.violations_count == 0 && a.status !== 'disqualified').length;
+        const warned    = attempts.filter(a => a.violations_count > 0 && a.status !== 'disqualified').length;
+        const disq      = attempts.filter(a => a.status === 'disqualified').length;
+
+        const tableRows = attempts.length ? attempts.map(att => {
+          let lvl = '';
+          if (att.status === 'disqualified' || att.violations_count >= 3) lvl = `<span class="badge badge-danger">🔒 3/3 DISQ</span>`;
+          else if (att.violations_count === 2) lvl = `<span class="badge badge-amber">⚠️ 2/3</span>`;
+          else if (att.violations_count === 1) lvl = `<span class="badge badge-amber">⚠️ 1/3</span>`;
+          else lvl = `<span class="badge badge-green">✓ CLEAN</span>`;
+
+          const logs = att.cheat_logs?.length ? `<ul style="padding-left:1rem;margin:0;font-size:0.77rem;line-height:1.4;">${att.cheat_logs.map(l => `<li><span class="text-danger">[${(l.created_at||'').split(' ')[1]||''}]</span> ${this.escHtml(l.details)}</li>`).join('')}</ul>` : `<span class="text-green" style="font-size:0.82rem;">✓ Tidak ada pelanggaran</span>`;
+
+          return `
+            <tr style="${att.status === 'disqualified' ? 'background:rgba(239,68,68,0.06);' : ''}">
+              <td>
+                <div class="font-700">${this.escHtml(att.student_name)}</div>
+                <div class="td-mono">NIS: ${att.student_nis || att.student_username}</div>
+              </td>
+              <td>
+                ${att.status === 'completed'    ? `<span class="badge badge-green">SELESAI</span>` : ''}
+                ${att.status === 'disqualified' ? `<span class="badge badge-danger">DIDISQ</span>` : ''}
+                ${att.status === 'in_progress'  ? `<span class="badge badge-cyan">BERLANGSUNG</span>` : ''}
+              </td>
+              <td><span class="font-mono font-800" style="font-size:1.1rem;color:var(--cyan);">${att.score}</span><span class="text-muted"> /100</span></td>
+              <td>${lvl}</td>
+              <td style="max-width:240px;">${logs}</td>
+              <td><button class="btn btn-amber btn-sm" onclick="App.resetStudentExam(${att.id},'${this.escHtml(att.student_name)}',${quizId})">🔄 Reset & Buka</button></td>
+            </tr>
+          `;
+        }).join('') : `<tr><td colspan="6"><div class="empty-state"><p>Belum ada siswa yang mengerjakan ujian ini.</p></div></td></tr>`;
+
+        this.openModal('🛡️ Incident Forensics & Monitoring Ujian', `
+          <div class="incident-kpi-bar">
+            <div class="incident-kpi"><div class="incident-kpi-label text-muted">Total Peserta</div><div class="incident-kpi-val">${total}</div></div>
+            <div class="incident-kpi"><div class="incident-kpi-label" style="color:var(--emerald);">Tertib (Clean)</div><div class="incident-kpi-val text-green">${clean}</div></div>
+            <div class="incident-kpi"><div class="incident-kpi-label" style="color:var(--amber);">Peringatan Tab</div><div class="incident-kpi-val text-amber">${warned}</div></div>
+            <div class="incident-kpi"><div class="incident-kpi-label" style="color:var(--danger);">Didiskualifikasi</div><div class="incident-kpi-val text-danger">${disq}</div></div>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead><tr><th>Kandidat</th><th>Status</th><th>Skor</th><th>Level</th><th>Log Forensik</th><th>Aksi Admin</th></tr></thead>
+              <tbody>${tableRows}</tbody>
+            </table>
+          </div>
+        `, 'modal-box modal-box-lg');
+      });
+  },
+
+  resetStudentExam(attemptId, studentName, quizId) {
+    if (!confirm(`⚠️ Reset Ujian — "${studentName}"\n\nSemua jawaban, skor, pelanggaran, dan status akan dihapus.\nSiswa dapat mengerjakan kembali dari awal.\n\nLanjutkan?`)) return;
+    fetch('api/exam.php?action=reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attempt_id: attemptId })
+    })
+      .then(r => r.json())
+      .then(d => {
+        this._toast(d.success ? `✅ Ujian "${studentName}" berhasil direset.` : `❌ ${d.message}`);
+        if (d.success) this.openExamResultsPanel(quizId);
+      });
+  },
+
+  // ADMIN/GURU — Panel Hasil & Reset Ujian per-Paket
+  openExamResultsPanel(quizId) {
+    fetch(`api/exam.php?action=results&quiz_id=${quizId}`)
+      .then(r => r.json())
+      .then(data => {
+        const attempts = data.attempts || [];
+        const total    = attempts.length;
+        const selesai  = attempts.filter(a => a.status === 'completed').length;
+        const berlangsung = attempts.filter(a => a.status === 'in_progress').length;
+        const disq     = attempts.filter(a => a.status === 'disqualified').length;
+        const avgSkor  = selesai ? (attempts.filter(a=>a.status==='completed').reduce((s,a)=>s+parseFloat(a.score||0),0)/selesai).toFixed(1) : '-';
+
+        const rows = attempts.length ? attempts.map(att => {
+          const statusBadge =
+            att.status === 'completed'   ? `<span class="badge badge-green">✅ Selesai</span>` :
+            att.status === 'in_progress' ? `<span class="badge badge-cyan">🔄 Berlangsung</span>` :
+            att.status === 'disqualified'? `<span class="badge badge-danger">🚫 Diskualifikasi</span>` :
+                                           `<span class="badge badge-muted">${att.status}</span>`;
+
+          const violBadge = att.violations_count >= 3
+            ? `<span class="badge badge-danger">${att.violations_count}x ⚠️</span>`
+            : att.violations_count > 0
+              ? `<span class="badge badge-amber">${att.violations_count}x</span>`
+              : `<span class="badge badge-green">0</span>`;
+
+          const mulai = att.started_at  ? att.started_at.substring(0,16).replace('T',' ')  : '-';
+          const selesaiAt = att.finished_at ? att.finished_at.substring(0,16).replace('T',' ') : '-';
+
+          return `
+            <tr style="${att.status==='disqualified'?'background:rgba(239,68,68,0.05);':''}">
+              <td>
+                <div class="font-700">${this.escHtml(att.student_name)}</div>
+                <div class="td-mono" style="font-size:0.77rem;">NIS: ${this.escHtml(att.student_nis || att.student_username || '-')}</div>
+              </td>
+              <td>${statusBadge}</td>
+              <td><span class="font-mono font-800" style="font-size:1.05rem;color:var(--cyan);">${att.status==='completed'?att.score:'-'}</span>${att.status==='completed'?'<span class="text-muted">/100</span>':''}</td>
+              <td>${violBadge}</td>
+              <td style="font-size:0.78rem;color:var(--text-muted);">${mulai}</td>
+              <td style="font-size:0.78rem;color:var(--text-muted);">${selesaiAt}</td>
+              <td>
+                <button class="btn btn-amber btn-sm" onclick="App.resetStudentExam(${att.id},'${this.escHtml(att.student_name)}',${quizId})" title="Hapus attempt dan izinkan siswa mengulang ujian">
+                  🔄 Reset
+                </button>
+              </td>
+            </tr>`;
+        }).join('') : `<tr><td colspan="7"><div class="empty-state"><p>Belum ada siswa yang mengerjakan ujian ini.</p></div></td></tr>`;
+
+        this.openModal('📊 Hasil & Manajemen Reset Ujian', `
+          <div class="incident-kpi-bar" style="margin-bottom:1.25rem;">
+            <div class="incident-kpi"><div class="incident-kpi-label text-muted">Total Peserta</div><div class="incident-kpi-val">${total}</div></div>
+            <div class="incident-kpi"><div class="incident-kpi-label" style="color:var(--emerald);">Selesai</div><div class="incident-kpi-val text-green">${selesai}</div></div>
+            <div class="incident-kpi"><div class="incident-kpi-label" style="color:var(--cyan);">Berlangsung</div><div class="incident-kpi-val" style="color:var(--cyan);">${berlangsung}</div></div>
+            <div class="incident-kpi"><div class="incident-kpi-label" style="color:var(--danger);">Diskualifikasi</div><div class="incident-kpi-val text-danger">${disq}</div></div>
+            <div class="incident-kpi"><div class="incident-kpi-label" style="color:var(--amber);">Rata-rata Skor</div><div class="incident-kpi-val" style="color:var(--amber);">${avgSkor}</div></div>
+          </div>
+          <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.75rem;">
+            💡 Klik <b>Reset</b> untuk menghapus attempt siswa — siswa dapat mengerjakan kembali dari awal.
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead><tr><th>Siswa</th><th>Status</th><th>Skor</th><th>Pelanggaran</th><th>Dimulai</th><th>Selesai</th><th>Aksi</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        `, 'modal-box modal-box-lg');
+      });
+  },
+
+  // STUDENT CBT VIEW
+  loadStudentCbt() {
+    fetch('api/quizzes.php')
+      .then(r => r.json())
+      .then(data => {
+        const quizzes = data.quizzes || data.data || [];
+        const cards = quizzes.length ? quizzes.map(q => {
+          const att = q.my_attempt || (q.attempt_status ? { status: q.attempt_status, score: q.attempt_score, id: q.attempt_id } : null);
+          const qCount = q.total_questions !== undefined ? q.total_questions : (q.question_count !== undefined ? q.question_count : 0);
+          let action = '';
+
+          if (!att) {
+            // Belum pernah mengerjakan
+            action = `<button class="btn btn-primary btn-full" onclick="App.confirmStartExam(${q.id},'${this.escHtml(q.title)}')">🚀 Mulai Ujian</button>`;
+          } else if (att.status === 'in_progress') {
+            // Sedang berlangsung (resume)
+            action = `<button class="btn btn-amber btn-full" onclick="App.startExam(${q.id})">▶️ Lanjutkan Ujian</button>`;
+          } else if (att.status === 'disqualified') {
+            // Diskualifikasi
+            action = `
+              <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);padding:0.85rem;border-radius:var(--r-md);text-align:center;">
+                <div style="font-size:1.5rem;margin-bottom:0.3rem;">🚫</div>
+                <div class="font-700 text-danger">Didiskualifikasi</div>
+                <div class="text-muted" style="font-size:0.78rem;margin-top:0.25rem;">Keluar layar lebih dari 3x. Hubungi Admin/Guru untuk Reset Ujian.</div>
+              </div>`;
+          } else if (att.status === 'completed') {
+            // ── SELESAI: ONE-ATTEMPT LOCK ──────────────────────────────────────
+            const skor = parseFloat(att.score || 0);
+            const kkm  = parseFloat(q.kkm || 70);
+            const lulus = skor >= kkm;
+            action = `
+              <div style="background:${lulus ? 'rgba(16,185,129,0.08)' : 'rgba(249,115,22,0.08)'};border:1px solid ${lulus ? 'rgba(16,185,129,0.35)' : 'rgba(249,115,22,0.35)'};padding:0.85rem;border-radius:var(--r-md);text-align:center;">
+                <div style="font-size:1.4rem;margin-bottom:0.3rem;">${lulus ? '✅' : '📋'}</div>
+                <div class="font-700" style="color:${lulus ? 'var(--emerald)' : 'var(--amber)'};">${lulus ? 'Ujian Selesai — LULUS' : 'Ujian Selesai'}</div>
+                <div style="font-size:1.5rem;font-weight:900;margin:0.3rem 0;color:var(--cyan);">${skor} <span style="font-size:0.9rem;font-weight:400;color:var(--text-muted);">/ 100</span></div>
+                <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.6rem;">KKM: ${kkm} &nbsp;|&nbsp; Ujian hanya boleh dikerjakan 1x</div>
+                <button class="btn btn-secondary btn-sm btn-full" onclick="App.openExamReview(${att.id})">🔍 Lihat Pembahasan & Jawaban</button>
+              </div>`;
+          } else {
+            // Fallback
+            action = `<div class="text-muted" style="text-align:center;padding:0.5rem;">Status tidak diketahui</div>`;
+          }
+
+          return `
+            <div class="quiz-card">
+              <div>
+                <div class="quiz-card-meta">
+                  <span class="badge badge-cyan">${qCount} Soal</span>
+                  <span class="badge badge-amber">⏱ ${q.duration_minutes} Menit</span>
+                  ${q.kkm ? `<span class="badge badge-muted">KKM ${q.kkm}</span>` : ''}
+                </div>
+                <div class="quiz-card-title">${this.escHtml(q.title)}</div>
+                <div class="quiz-card-desc">${this.escHtml(q.description || 'Kerjakan dengan jujur dan teliti.')}</div>
+              </div>
+              <div style="margin-top:1rem;">${action}</div>
+            </div>
+          `;
+        }).join('') : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">📝</div><p>Belum ada ujian aktif saat ini.</p></div>`;
+
+        this.setContent(`
+          <div class="mb-3">
+            <div class="section-title">📝 Ujian CBT Online</div>
+            <div class="section-sub">Pilih paket ujian aktif. Setiap ujian hanya dapat dikerjakan <b>1 (satu) kali</b>. Dilarang berpindah tab atau meminimalkan layar selama ujian.</div>
+          </div>
+          <div class="cards-grid">${cards}</div>
+        `);
+      });
+  },
+
+  confirmStartExam(quizId, title) {
+    // Stop any leftover modal preview stream before opening new modal
+    if (this._modalPreviewStream) {
+      this._modalPreviewStream.getTracks().forEach(t => t.stop());
+      this._modalPreviewStream = null;
+    }
+
+    this.openModal('🔒 Konfirmasi Ujian & Perizinan Kamera', `
+      <div style="text-align:center;">
+        <div style="font-size:3rem;margin-bottom:0.5rem;">📷</div>
+        <h2 style="font-size:1.15rem;margin-bottom:0.5rem;">Ujian: ${this.escHtml(title)}</h2>
+        <p style="color:var(--text-sub);font-size:0.85rem;line-height:1.6;margin-bottom:1rem;">
+          Ujian ini dilindungi oleh <b>E-Learning SMKN 1 CIBINONG Anti-Cheat Guard &amp; Live Proctoring</b>.<br>
+          Kamera depan/webcam wajib diizinkan selama ujian berlangsung.
+        </p>
+
+        <!-- Camera Preview Box inside Modal -->
+        <div style="width:200px;height:150px;background:#000;border-radius:var(--r-md);margin:0 auto 1rem;position:relative;overflow:hidden;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;">
+          <video id="modal-cam-preview" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;display:none;"></video>
+          <div id="modal-cam-placeholder" style="text-align:center;padding:0.5rem;color:var(--text-muted);font-size:0.75rem;">
+            <div style="font-size:1.8rem;margin-bottom:0.2rem;">📹</div>
+            <span id="modal-cam-placeholder-text">Menginisialisasi kamera…</span>
+          </div>
+        </div>
+        <div id="cam-prep-status-box" style="margin-bottom:1.25rem;">
+          <span class="badge badge-amber" id="cam-prep-status">⏳ Meminta izin kamera dari browser…</span>
+        </div>
+
+        <div style="display:flex;gap:0.5rem;justify-content:center;">
+          <button class="btn btn-secondary" id="btn-cancel-cbt" onclick="App._cancelModalCam(); App.closeModal();">Batal</button>
+          <button class="btn btn-primary" id="btn-start-cbt-exec" disabled
+            style="opacity:0.55;cursor:not-allowed;"
+            onclick="App.execStartExamDirect(${quizId})">
+            🚀 Saya Paham, Mulai Ujian
+          </button>
+        </div>
+      </div>
+    `);
+
+    // Defer camera trigger by one microtask tick so DOM is fully committed
+    setTimeout(() => this._triggerModalCamera(quizId), 0);
+  },
+
+  // Internal: stop modal preview stream on cancel
+  _cancelModalCam() {
+    if (this._modalPreviewStream) {
+      this._modalPreviewStream.getTracks().forEach(t => t.stop());
+      this._modalPreviewStream = null;
+    }
+  },
+
+  // Internal: async camera init for modal with clean try/catch
+  async _triggerModalCamera(quizId) {
+    const getEl = id => document.getElementById(id);
+    const btn     = getEl('btn-start-cbt-exec');
+    const video   = getEl('modal-cam-preview');
+    const ph      = getEl('modal-cam-placeholder');
+    const phText  = getEl('modal-cam-placeholder-text');
+    const statusBox = getEl('cam-prep-status-box');
+
+    // Guard: modal might have been closed before this tick
+    if (!btn) return;
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      // Browser doesn't support getUserMedia — allow start anyway
+      if (statusBox) statusBox.innerHTML = `<span class="badge badge-amber">⚠️ Browser tidak mendukung kamera. Mode standar aktif.</span>`;
+      this._enableStartBtn(btn);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: 'user' }
+      });
+
+      // Guard again: user might have clicked Batal while waiting
+      if (!getEl('btn-start-cbt-exec')) {
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
+
+      this._modalPreviewStream = stream;
+      this.proctorStream = stream; // reuse stream in actual exam — avoids double getUserMedia
+
+      if (video)  { video.srcObject = stream; video.style.display = 'block'; }
+      if (ph)     { ph.style.display = 'none'; }
+      if (statusBox) statusBox.innerHTML = `<span class="badge badge-green">✅ Kamera Aktif — Siap Ujian</span>`;
+      this._enableStartBtn(btn);
+
+    } catch (err) {
+      console.warn('[CBT] Camera permission denied or unavailable:', err);
+
+      // Guard: modal might be gone
+      if (!getEl('btn-start-cbt-exec')) return;
+
+      let msg = '⚠️ Kamera tidak dapat diakses.';
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        msg = '🚫 Izin kamera ditolak. Ujian berjalan tanpa proctoring kamera.';
+      } else if (err.name === 'NotFoundError') {
+        msg = '📷 Tidak ada kamera terdeteksi. Ujian berjalan tanpa proctoring kamera.';
+      }
+
+      if (phText)  phText.textContent = 'Kamera tidak tersedia.';
+      if (statusBox) statusBox.innerHTML = `<span class="badge badge-danger">${msg}</span>`;
+      // Still allow exam to start — camera is optional failsafe
+      this._enableStartBtn(btn);
+    }
+  },
+
+  // Internal: visually enable the Start Exam button
+  _enableStartBtn(btn) {
+    if (!btn) return;
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor  = 'pointer';
+    btn.focus();
+  },
+
+  execStartExamDirect(quizId) {
+    // Clean up the modal preview reference (stream stays alive via this.proctorStream)
+    this._modalPreviewStream = null;
+    this.closeModal();
+
+    // Request fullscreen immediately (must be called within user gesture / click handler)
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(e => console.warn('[CBT] Fullscreen request failed:', e));
+    } else if (window.ExamGuard && ExamGuard.requestFullscreen) {
+      window.ExamGuard.requestFullscreen();
+    }
+
+    this.startExam(quizId);
+  },
+
+  startExam(quizId) {
+    fetch('api/exam.php?action=start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quiz_id: quizId }) })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) { alert(data.message); return; }
+        this.currentQuiz          = data.quiz;
+        this.questions            = data.questions;
+        this.savedAnswers         = data.saved_answers || {};
+        this.flaggedQuestions     = {};
+        this.attemptId            = data.attempt_id;
+        this.currentQuestionIndex = 0;
+
+        if (!this.questions.length) { alert('Belum ada soal pada ujian ini.'); return; }
+
+        document.body.classList.add('exam-mode-active');
+        if (window.ExamGuard) {
+          window.ExamGuard.start(this.attemptId, data.violations_count || 0, v => this.onViolation(v), d => this.onDisqualified(d));
+        }
+        this.startTimer(this.currentQuiz.duration_minutes * 60);
+        this.renderExamScreen();
+        this.startProctoringWebcam();
+      });
+  },
+
+  startProctoringWebcam(onReady) {
+    if (window.ExamGuard) window.ExamGuard.pauseBlurDetection(6000);
+
+    const initStream = (stream) => {
+      this.proctorStream = stream;
+      const videoEl = document.getElementById('proctor-live-video');
+      if (videoEl) {
+        videoEl.srcObject = stream;
+        videoEl.play().catch(e => console.warn("Video play error:", e));
+      }
+      this._startSnapshotLoop();
+      this._startFaceDetectionLoop();
+      if (onReady) onReady();
+    };
+
+    if (this.proctorStream) {
+      initStream(this.proctorStream);
+      return;
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.warn("Webcam not supported on this browser.");
+      if (onReady) onReady();
+      return;
+    }
+
+    navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' } })
+      .then(stream => {
+        initStream(stream);
+      })
+      .catch(err => {
+        console.warn("Camera access permission denied or unavailable:", err);
+        if (onReady) onReady();
+      });
+  },
+
+  _startSnapshotLoop() {
+    if (this.proctorSnapshotTimer) clearInterval(this.proctorSnapshotTimer);
+    this.proctorSnapshotTimer = setInterval(() => {
+      this.captureAndUploadSnapshot();
+    }, 12000);
+
+    setTimeout(() => {
+      this.captureAndUploadSnapshot();
+    }, 2000);
+  },
+
+  _startFaceDetectionLoop() {
+    this._stopFaceDetectionLoop();
+    this._missingFaceCount = 0;
+    this._faceGraceUntil = Date.now() + 6000; // 6 seconds initial grace period
+
+    this._faceDetectTimer = setInterval(async () => {
+      if (!this.attemptId || !this.proctorStream) return;
+      const videoEl = document.getElementById('proctor-live-video');
+      const badgeEl = document.getElementById('proctor-face-badge');
+      const wrapEl  = document.getElementById('cam-screen-wrapper');
+      if (!videoEl || videoEl.readyState < 2) return;
+
+      const isFacePresent = await this._checkFacePresence(videoEl);
+
+      // Grace period while starting camera
+      if (Date.now() < this._faceGraceUntil) {
+        if (badgeEl) {
+          badgeEl.className = 'face-status-pill detected';
+          badgeEl.innerHTML = '🟢 Menginisialisasi Kamera…';
+        }
+        return;
+      }
+
+      if (isFacePresent) {
+        this._missingFaceCount = 0;
+        if (badgeEl) {
+          badgeEl.className = 'face-status-pill detected';
+          badgeEl.innerHTML = '🟢 Wajah Terdeteksi';
+        }
+        if (wrapEl) wrapEl.classList.remove('face-missing');
+      } else {
+        this._missingFaceCount = (this._missingFaceCount || 0) + 1;
+        if (badgeEl) {
+          badgeEl.className = 'face-status-pill missing';
+          badgeEl.innerHTML = `⚠️ Wajah Hilang (${this._missingFaceCount}/3)`;
+        }
+        if (wrapEl) wrapEl.classList.add('face-missing');
+
+        // 3 consecutive missed checks (~4.5s) triggers violation
+        if (this._missingFaceCount >= 3) {
+          this._missingFaceCount = 0;
+          if (window.ExamGuard && window.ExamGuard.active) {
+            window.ExamGuard.triggerViolation(
+              'face_not_detected',
+              'Wajah tidak terdeteksi di kamera pengawas! Harap selalu menghadap ke layar kamera.'
+            );
+          }
+        }
+      }
+    }, 1500);
+  },
+
+  _stopFaceDetectionLoop() {
+    if (this._faceDetectTimer) {
+      clearInterval(this._faceDetectTimer);
+      this._faceDetectTimer = null;
+    }
+    this._missingFaceCount = 0;
+  },
+
+  async _checkFacePresence(videoEl) {
+    // 1. Try browser native Shape Detection FaceDetector API
+    if ('FaceDetector' in window) {
+      try {
+        if (!this._nativeFaceDetector) {
+          this._nativeFaceDetector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+        }
+        const faces = await this._nativeFaceDetector.detect(videoEl);
+        if (Array.isArray(faces) && faces.length > 0) return true;
+      } catch (e) {}
+    }
+
+    // 2. Universal Canvas Skin-Tone & Facial Contrast Analysis
+    try {
+      let canvas = document.getElementById('proctor-face-canvas');
+      if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvas.id = 'proctor-face-canvas';
+        canvas.style.display = 'none';
+        document.body.appendChild(canvas);
+      }
+      const w = 120;
+      const h = 90;
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(videoEl, 0, 0, w, h);
+
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const d = imgData.data;
+
+      // Central crop region (where candidate head is located)
+      const x0 = Math.floor(w * 0.18);
+      const x1 = Math.floor(w * 0.82);
+      const y0 = Math.floor(h * 0.15);
+      const y1 = Math.floor(h * 0.85);
+
+      let skinCount = 0;
+      let totalSampled = 0;
+      let sumLuma = 0;
+      let minLuma = 255;
+      let maxLuma = 0;
+
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const idx = (y * w + x) * 4;
+          const r = d[idx];
+          const g = d[idx + 1];
+          const b = d[idx + 2];
+          const luma = (r * 299 + g * 587 + b * 114) / 1000;
+
+          sumLuma += luma;
+          if (luma < minLuma) minLuma = luma;
+          if (luma > maxLuma) maxLuma = luma;
+          totalSampled++;
+
+          const sum = r + g + b;
+          if (sum > 45) {
+            const normR = r / sum;
+            const normG = g / sum;
+            const isSkin = (normR > 0.35 && normG > 0.25 && normR > normG && (r > g) && (g >= b * 0.75)) ||
+                           (r > 50 && g > 35 && b > 25 && (r - g >= 8) && (r - b >= 8));
+            if (isSkin) skinCount++;
+          }
+        }
+      }
+
+      const avgLuma = sumLuma / (totalSampled || 1);
+      const skinRatio = skinCount / (totalSampled || 1);
+      const contrast = maxLuma - minLuma;
+
+      if (avgLuma < 14) return false; // pitch black/camera covered
+      if (contrast < 18) return false; // completely blank wall
+      return skinRatio >= 0.045; // face present
+    } catch (e) {
+      return true; // fail-safe
+    }
+  },
+
+  captureAndUploadSnapshot() {
+    if (!this.attemptId) return;
+    const videoEl = document.getElementById('proctor-live-video');
+    if (!videoEl || videoEl.readyState !== 4) return;
+
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 240;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+
+      fetch('api/exam.php?action=save_snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          attempt_id: this.attemptId,
+          image_data: dataUrl
+        })
+      }).catch(e => console.warn("Snapshot upload error:", e));
+    } catch (e) {
+      console.warn("Canvas capture error:", e);
+    }
+  },
+
+  stopProctoringWebcam() {
+    this._stopFaceDetectionLoop();
+    if (this.proctorSnapshotTimer) {
+      clearInterval(this.proctorSnapshotTimer);
+      this.proctorSnapshotTimer = null;
+    }
+    if (this.proctorStream) {
+      this.proctorStream.getTracks().forEach(track => track.stop());
+      this.proctorStream = null;
+    }
+  },
+
+  onViolation(v) {
+    let modal = document.getElementById('viol-modal');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.id = 'viol-modal';
+    modal.style.zIndex = '99999';
+
+    const isFace = (v.type === 'face_not_detected');
+    const titleText = isFace ? 'WAJAH TIDAK TERDETEKSI!' : 'PELANGGARAN TERDETEKSI!';
+    const icon = isFace ? '📷' : '⚠️';
+    const subText = isFace 
+      ? 'Wajah Anda tidak terdeteksi di depan kamera pengawas. Pastikan posisi wajah Anda selalu terlihat jelas di kamera selama ujian berlangsung.'
+      : 'Anda terdeteksi keluar dari jendela / tab ujian.';
+
+    modal.innerHTML = `
+      <div class="modal-box" style="text-align:center;border:2px solid var(--danger);max-width:440px;">
+        <div style="font-size:3.5rem;margin-bottom:0.75rem;">${icon}</div>
+        <h2 style="color:var(--danger);margin-bottom:0.5rem;font-size:1.35rem;">${titleText}</h2>
+        <p style="color:var(--text-sub);font-size:0.92rem;margin-bottom:1rem;line-height:1.5;">${subText}</p>
+        <div style="background:var(--danger-dim);border:1px solid rgba(239,68,68,0.3);border-radius:var(--r-md);padding:0.6rem 1rem;margin-bottom:1.25rem;">
+          <span style="font-size:0.75rem;color:var(--text-muted);display:block;">AKUMULASI PELANGGARAN</span>
+          <span style="font-size:1.35rem;font-weight:800;color:var(--danger);">${v.violations_count} / ${v.max_violations}</span>
+          <small style="display:block;color:var(--text-muted);font-size:0.7rem;">Maksimal 3x pelanggaran sebelum diskualifikasi</small>
+        </div>
+        <button class="btn btn-amber btn-full" onclick="document.getElementById('viol-modal').remove();if(window.ExamGuard) window.ExamGuard.requestFullscreen();">
+          ${isFace ? 'Saya Sudah di Depan Kamera (Lanjut Ujian)' : 'Kembali ke Layar Penuh Ujian'}
+        </button>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    const vt = document.getElementById('viol-count-display');
+    if (vt) vt.textContent = `${v.violations_count} / ${v.max_violations}`;
+  },
+
+  onDisqualified(d) {
+    document.body.classList.remove('exam-mode-active');
+    this.stopProctoringWebcam();
+    if (this.timerInterval) clearInterval(this.timerInterval);
+    let modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.style.zIndex = '999999';
+    modal.innerHTML = `
+      <div class="modal-box" style="text-align:center;border:2px solid var(--danger);max-width:440px;">
+        <div style="font-size:4rem;color:var(--danger);margin-bottom:0.5rem;">🚫</div>
+        <h1 style="color:#f87171;font-size:1.5rem;margin-bottom:0.75rem;">ANDA DIDISKUALIFIKASI</h1>
+        <p style="color:var(--text-sub);font-size:0.92rem;margin-bottom:0.5rem;">${d.message || 'Anda telah mencapai batas 3x pelanggaran ujian.'}</p>
+        <p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:1.5rem;">Jika ini merupakan kendala teknis, silakan lapor kepada Pengawas/Admin untuk melakukan <b>Reset Ujian</b>.</p>
+        <button class="btn btn-danger btn-full" onclick="location.reload();">Keluar ke Dashboard</button>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  },
+
+  // EXAM SCREEN RENDER (With Large Camera Under Question Navigation)
+  renderExamScreen() {
+    const q           = this.questions[this.currentQuestionIndex];
+    const saved       = this.savedAnswers[q.id] || '';
+    const flagged     = !!this.flaggedQuestions[q.id];
+    const answered    = Object.keys(this.savedAnswers).length;
+    const total       = this.questions.length;
+    const violations  = window.ExamGuard ? window.ExamGuard.violationCount : 0;
+
+    document.getElementById('main-content').innerHTML = `
+      <div class="exam-shell">
+
+        <!-- Exam Top Bar -->
+        <div class="exam-topbar">
+          <div class="exam-title-block">
+            <div style="display:flex;gap:0.5rem;margin-bottom:0.25rem;">
+              <span class="badge badge-cyan" style="font-size:0.68rem;">SESI AKTIF</span>
+              <span class="badge badge-danger" style="font-size:0.68rem;">LOCKDOWN CBT</span>
+            </div>
+            <h3>${this.escHtml(this.currentQuiz.title)}</h3>
+            <small>Kandidat: <b>${this.escHtml(this.currentUser.name)}</b> (${this.currentUser.nip_nis || this.currentUser.username}) — SMKN 1 CIBINONG</small>
+          </div>
+
+          <div class="exam-topbar-right">
+            <!-- Sleek Proctor Status Pill -->
+            <div style="display:flex;align-items:center;gap:0.45rem;background:var(--bg-card);padding:0.4rem 0.8rem;border-radius:var(--r-md);border:1px solid var(--border);">
+              <span style="display:inline-block;width:8px;height:8px;background:var(--emerald);border-radius:50%;box-shadow:0 0 6px var(--emerald);"></span>
+              <span style="font-size:0.75rem;font-weight:700;color:var(--text-sub);">PROCTORING ON</span>
+            </div>
+
+            <!-- Timer -->
+            <div class="exam-timer">
+              <div class="exam-timer-label">Sisa Waktu</div>
+              <div class="exam-timer-value" id="exam-timer-display">--:--</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Violation Strip -->
+        <div class="violation-strip">
+          <span>⚠️</span>
+          <span><b>ANTI-CHEAT AKTIF</b> — Berpindah tab akan dicatat. Pelanggaran: <b id="viol-count-display" style="color:#fca5a5;font-size:1rem;">${violations} / 3</b> (maks. 3x → diskualifikasi)</span>
+        </div>
+
+        <!-- Exam Body -->
+        <div class="exam-body">
+
+          <!-- Question Card -->
+          <div class="question-card">
+            <div class="question-meta">
+              <div style="display:flex;align-items:center;gap:0.75rem;">
+                <span class="question-num">SOAL ${this.currentQuestionIndex + 1} / ${total}</span>
+                <span class="badge badge-muted">Pilihan Ganda</span>
+                <span class="badge badge-muted">10 Poin</span>
+              </div>
+              <button class="btn btn-sm ${flagged ? 'btn-danger' : 'btn-secondary'}" onclick="App.toggleFlag(${q.id})">
+                ${flagged ? '★ Ditandai Ragu' : '☆ Tandai Ragu-ragu'}
+              </button>
+            </div>
+
+            <div class="question-text">${this.escHtml(q.question_text)}</div>
+
+            <div class="options-list">
+              ${['A','B','C','D'].map(k => {
+                const text  = q['option_' + k.toLowerCase()];
+                const sel   = saved === k;
+                return `
+                  <div class="option-item ${sel ? 'selected' : ''}" onclick="App.selectOption(${q.id},'${k}')">
+                    <div class="option-key">${k}</div>
+                    <div class="option-text">${this.escHtml(text)}</div>
+                    ${sel ? `<span class="badge badge-cyan" style="margin-left:auto;flex-shrink:0;">✓ Dipilih</span>` : ''}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+
+            <div class="question-nav-bar">
+              <button class="btn btn-secondary" onclick="App.prevQ()" ${this.currentQuestionIndex === 0 ? 'disabled' : ''}>⬅️ Sebelumnya</button>
+              <div style="display:flex;gap:0.6rem;align-items:center;">
+                ${saved ? `<button class="btn btn-secondary btn-sm" onclick="App.clearChoice(${q.id})">🗑 Bersihkan</button>` : ''}
+                ${this.currentQuestionIndex === total - 1
+                  ? `<button class="btn btn-primary" onclick="App.confirmSubmit()">✅ Selesai & Kirim</button>`
+                  : `<button class="btn btn-primary" onclick="App.nextQ()">Selanjutnya ➡️</button>`}
+              </div>
+            </div>
+          </div>
+
+          <!-- Navigation Palette with Large Camera Underneath -->
+          <div class="nav-palette-card">
+            <div class="palette-header">
+              <div class="palette-title">🗂 Navigasi Soal</div>
+              <span class="badge badge-cyan">${answered}/${total}</span>
+            </div>
+            <div class="palette-legend">
+              <div style="display:flex;align-items:center;gap:0.3rem;"><div class="legend-dot" style="background:var(--cyan);"></div>Aktif</div>
+              <div style="display:flex;align-items:center;gap:0.3rem;"><div class="legend-dot" style="background:var(--emerald);"></div>Dijawab</div>
+              <div style="display:flex;align-items:center;gap:0.3rem;"><div class="legend-dot" style="background:var(--danger);"></div>Ragu</div>
+              <div style="display:flex;align-items:center;gap:0.3rem;"><div class="legend-dot" style="background:var(--bg-input);border:1px solid var(--border-subtle);"></div>Belum</div>
+            </div>
+            <div class="palette-grid">
+              ${this.questions.map((item, idx) => {
+                const cls = [
+                  idx === this.currentQuestionIndex ? 'active' : '',
+                  this.savedAnswers[item.id]    ? 'answered' : '',
+                  this.flaggedQuestions[item.id] ? 'flagged'  : '',
+                ].filter(Boolean).join(' ');
+                return `<div class="palette-num ${cls}" onclick="App.goToQ(${idx})">${idx + 1}${this.flaggedQuestions[item.id] ? '<span class="palette-flag-star">★</span>' : ''}</div>`;
+              }).join('')}
+            </div>
+
+            <!-- LARGE PROCTOR CAMERA (Directly Below Question Numbers) -->
+            <div class="exam-camera-box-large">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+                <span style="font-size:0.75rem;font-weight:700;color:var(--text-main);display:flex;align-items:center;gap:0.35rem;">
+                  📷 KAMERA PENGAWAS
+                </span>
+                <span style="font-size:0.7rem;font-weight:700;color:var(--danger);display:flex;align-items:center;gap:0.3rem;">
+                  <span style="display:inline-block;width:7px;height:7px;background:var(--danger);border-radius:50%;box-shadow:0 0 6px var(--danger);"></span> REC
+                </span>
+              </div>
+
+              <div class="cam-screen-large" id="cam-screen-wrapper">
+                <video id="proctor-live-video" autoplay playsinline muted></video>
+                <div class="cam-scan-overlay"></div>
+                <div class="cam-rec-dot" style="position:absolute;top:8px;right:8px;z-index:4;"></div>
+                <div id="proctor-face-badge" class="face-status-pill detected">
+                  🟢 Wajah Terdeteksi
+                </div>
+              </div>
+              <small style="display:block;color:var(--text-muted);font-size:0.7rem;margin-top:0.35rem;text-align:center;">
+                Wajah wajib terlihat jelas. Wajah hilang = Peringatan!
+              </small>
+            </div>
+
+            <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border-subtle);">
+              <button class="btn btn-primary btn-full" onclick="App.confirmSubmit()">✅ Selesaikan Ujian</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    `;
+
+    // Reattach proctor video stream to video element if stream active
+    if (this.proctorStream) {
+      const vEl = document.getElementById('proctor-live-video');
+      if (vEl) {
+        vEl.srcObject = this.proctorStream;
+        vEl.play().catch(e => console.warn("Video play error on re-render:", e));
+      }
+    }
+
+    this.updateTimerDisplay();
+  },
+
+  selectOption(qId, key) {
+    this.savedAnswers[qId] = key;
+    this.renderExamScreen();
+    fetch('api/exam.php?action=save_answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ attempt_id: this.attemptId, question_id: qId, selected_option: key }) });
+  },
+
+  clearChoice(qId) {
+    delete this.savedAnswers[qId];
+    this.renderExamScreen();
+    fetch('api/exam.php?action=save_answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ attempt_id: this.attemptId, question_id: qId, selected_option: '' }) });
+  },
+
+  toggleFlag(qId) {
+    if (this.flaggedQuestions[qId]) delete this.flaggedQuestions[qId];
+    else this.flaggedQuestions[qId] = true;
+    this.renderExamScreen();
+  },
+
+  prevQ() { if (this.currentQuestionIndex > 0) { this.currentQuestionIndex--; this.renderExamScreen(); } },
+  nextQ() { if (this.currentQuestionIndex < this.questions.length - 1) { this.currentQuestionIndex++; this.renderExamScreen(); } },
+  goToQ(i) { this.currentQuestionIndex = i; this.renderExamScreen(); },
+
+  startTimer(sec) {
+    if (this.timerInterval) clearInterval(this.timerInterval);
+    this.timeRemaining = sec;
+    this.timerInterval = setInterval(() => {
+      this.timeRemaining--;
+      this.updateTimerDisplay();
+      if (this.timeRemaining <= 0) { clearInterval(this.timerInterval); alert('Waktu ujian habis!'); this.submitExam(true); }
+    }, 1000);
+  },
+
+  updateTimerDisplay() {
+    const el = document.getElementById('exam-timer-display');
+    if (!el) return;
+    const m = Math.floor(this.timeRemaining / 60);
+    const s = this.timeRemaining % 60;
+    el.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    el.style.color = this.timeRemaining < 300 ? '#f87171' : '';
+  },
+
+  confirmSubmit() {
+    const ans = Object.keys(this.savedAnswers).length;
+    const tot = this.questions.length;
+    this.openModal('✅ Kirim Jawaban Ujian?', `
+      <div style="text-align:center;">
+        <div style="font-size:3rem;margin-bottom:0.75rem;">📋</div>
+        <p style="color:var(--text-sub);margin-bottom:1rem;font-size:0.92rem;">
+          Anda telah menjawab <b style="color:var(--cyan);">${ans} dari ${tot}</b> soal.<br>
+          Setelah dikirim, jawaban Anda akan otomatis dievaluasi dan nilai serta pembahasannya akan ditampilkan.
+        </p>
+        <div style="display:flex;gap:0.5rem;justify-content:center;">
+          <button class="btn btn-secondary" onclick="App.closeModal()">Periksa Kembali</button>
+          <button class="btn btn-primary" onclick="App.closeModal();App.submitExam(false);">Ya, Kirim Sekarang</button>
+        </div>
+      </div>
+    `);
+  },
+
+  submitExam(auto) {
+    document.body.classList.remove('exam-mode-active');
+    this.stopProctoringWebcam();
+    if (this.timerInterval) clearInterval(this.timerInterval);
+    if (window.ExamGuard) window.ExamGuard.stop();
+
+    fetch('api/exam.php?action=submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attempt_id: this.attemptId, quiz_id: this.currentQuiz.id })
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (!d.success) {
+          alert(d.message || 'Gagal menyimpan ujian.');
+          return;
+        }
+        this.renderExamReview(d);
+      })
+      .catch(e => {
+        console.error("Submit error:", e);
+        alert('Terjadi kesalahan koneksi saat mengirim jawaban ujian.');
+      });
+  },
+
+  // EXAM RESULT, QUESTION REVIEW & EVALUATION SCREEN
+  renderExamReview(d) {
+    const questions = d.review || [];
+    const score = parseFloat(d.score || 0);
+    const totalQ = d.total_questions || questions.length;
+    const correctQ = d.correct_answers || questions.filter(q => q.is_correct == 1).length;
+    const wrongQ = Math.max(0, totalQ - correctQ);
+    const violations = d.violations_count || 0;
+    const isPass = score >= 75;
+
+    let predicate = 'Perlu Remedial (D)';
+    let predicateColor = 'var(--danger)';
+    if (score >= 90) { predicate = 'Istimewa / Sangat Memuaskan (A)'; predicateColor = 'var(--emerald)'; }
+    else if (score >= 75) { predicate = 'Baik / Lulus KKM (B)'; predicateColor = 'var(--cyan)'; }
+    else if (score >= 60) { predicate = 'Cukup (C)'; predicateColor = 'var(--amber)'; }
+
+    const quizTitle = d.quiz?.title || this.currentQuiz?.title || 'Ujian CBT';
+    const courseName = d.quiz?.course_name || this.currentQuiz?.course_name || 'Mata Pelajaran';
+
+    this.setContent(`
+      <div style="max-width:920px;margin:0 auto;padding-bottom:3rem;" id="exam-review-container">
+        
+        <!-- Action bar top -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:0.75rem;">
+          <div>
+            <div style="font-size:0.8rem;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:0.5px;">HASIL & EVALUASI CBT</div>
+            <h2 style="margin:0;font-size:1.6rem;color:var(--text-main);">${this.escHtml(quizTitle)}</h2>
+            <div style="font-size:0.85rem;color:var(--text-muted);">${this.escHtml(courseName)} · Siswa: <b>${this.escHtml(this.currentUser.name)}</b> (${this.currentUser.nip_nis || this.currentUser.username})</div>
+          </div>
+          <div style="display:flex;gap:0.6rem;">
+            <button class="btn btn-secondary" onclick="window.print()">🖨️ Cetak / Simpan PDF</button>
+            <button class="btn btn-primary" onclick="App.renderAppLayout('dashboard')">🏠 Kembali ke Dashboard</button>
+          </div>
+        </div>
+
+        <!-- Hero Scorecard -->
+        <div class="review-score-hero">
+          <div style="display:inline-block;padding:0.4rem 1.25rem;border-radius:999px;background:rgba(0,242,254,0.15);color:var(--cyan);font-weight:800;font-size:0.85rem;margin-bottom:1rem;border:1px solid rgba(0,242,254,0.3);">
+            ${isPass ? '🎉 SELAMAT! ANDA LULUS' : '⚠️ PERLU PENINGKATAN / REMEDIAL'}
+          </div>
+          <div style="font-size:0.85rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">NILAI AKHIR ANDA</div>
+          <div style="font-family:var(--font-head);font-size:4.5rem;font-weight:900;line-height:1;color:var(--cyan);margin:0.5rem 0;">
+            ${score}
+          </div>
+          <div style="font-size:1.1rem;font-weight:700;color:${predicateColor};margin-bottom:1.5rem;">
+            Predikat: ${predicate}
+          </div>
+
+          <!-- Quick Stats Grid -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:0.75rem;max-width:650px;margin:0 auto;">
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-md);padding:0.75rem;">
+              <div style="font-size:0.72rem;color:var(--text-muted);font-weight:700;">TOTAL SOAL</div>
+              <div style="font-size:1.3rem;font-weight:800;color:var(--text-main);">${totalQ}</div>
+            </div>
+            <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:var(--r-md);padding:0.75rem;">
+              <div style="font-size:0.72rem;color:#10b981;font-weight:700;">✅ BENAR</div>
+              <div style="font-size:1.3rem;font-weight:800;color:#10b981;">${correctQ} Soal</div>
+            </div>
+            <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:var(--r-md);padding:0.75rem;">
+              <div style="font-size:0.72rem;color:#ef4444;font-weight:700;">❌ SALAH</div>
+              <div style="font-size:1.3rem;font-weight:800;color:#ef4444;">${wrongQ} Soal</div>
+            </div>
+            <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--r-md);padding:0.75rem;">
+              <div style="font-size:0.72rem;color:#f59e0b;font-weight:700;">⚠️ PELANGGARAN</div>
+              <div style="font-size:1.3rem;font-weight:800;color:#f59e0b;">${violations}x</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter bar -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap;gap:0.5rem;">
+          <div style="font-weight:800;font-size:1.15rem;color:var(--text-main);">📋 Pembahasan & Kunci Jawaban</div>
+          <div style="display:flex;gap:0.4rem;">
+            <button class="btn btn-sm btn-outline active" id="btn-filter-all" onclick="App.filterReviewQuestions('all')">Semua (${totalQ})</button>
+            <button class="btn btn-sm btn-outline" id="btn-filter-correct" onclick="App.filterReviewQuestions('correct')">✅ Benar (${correctQ})</button>
+            <button class="btn btn-sm btn-outline" id="btn-filter-wrong" onclick="App.filterReviewQuestions('wrong')">❌ Salah (${wrongQ})</button>
+          </div>
+        </div>
+
+        <!-- Question items list -->
+        <div id="review-questions-list">
+          ${questions.map((q, idx) => {
+            const isCor = (q.is_correct == 1);
+            const userAns = q.selected_option || '—';
+            const corAns = q.correct_option || '—';
+            const corText = q['option_' + corAns.toLowerCase()] || '';
+
+            return `
+              <div class="review-q-card ${isCor ? 'is-correct' : 'is-wrong'}" data-status="${isCor ? 'correct' : 'wrong'}">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+                  <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <span style="font-size:0.85rem;font-weight:800;color:var(--text-main);background:var(--bg-canvas);border:1px solid var(--border);padding:0.25rem 0.6rem;border-radius:var(--r-sm);">
+                      SOAL ${idx + 1}
+                    </span>
+                    <span class="badge ${isCor ? 'badge-emerald' : 'badge-danger'}">
+                      ${isCor ? '✅ Benar (+10 Poin)' : (userAns === '—' ? '⚪ Tidak Dijawab (0 Poin)' : '❌ Jawaban Salah (0 Poin)')}
+                    </span>
+                  </div>
+                  <div style="font-size:0.8rem;color:var(--text-muted);font-weight:600;">Poin: ${isCor ? q.points || 10 : 0} / ${q.points || 10}</div>
+                </div>
+
+                <div style="font-size:1rem;font-weight:600;color:var(--text-main);margin-bottom:1rem;line-height:1.5;">
+                  ${this.escHtml(q.question_text)}
+                </div>
+
+                <!-- Options List -->
+                <div style="margin-bottom:0.75rem;">
+                  ${['A','B','C','D'].map(k => {
+                    const optText = q['option_' + k.toLowerCase()];
+                    if (!optText) return '';
+                    const isKeyCorrect = (k === corAns);
+                    const isUserPick = (k === userAns);
+
+                    let itemClass = 'review-opt-item';
+                    let badgeHtml = '';
+
+                    if (isKeyCorrect) {
+                      itemClass += ' opt-correct';
+                      badgeHtml = `<span class="badge badge-emerald" style="margin-left:auto;flex-shrink:0;">✅ Kunci Jawaban Benar</span>`;
+                    }
+                    if (isUserPick && !isKeyCorrect) {
+                      itemClass += ' opt-student-wrong';
+                      badgeHtml = `<span class="badge badge-danger" style="margin-left:auto;flex-shrink:0;">❌ Jawaban Anda</span>`;
+                    } else if (isUserPick && isKeyCorrect) {
+                      badgeHtml = `<span class="badge badge-emerald" style="margin-left:auto;flex-shrink:0;">✓ Jawaban Anda (Benar)</span>`;
+                    }
+
+                    return `
+                      <div class="${itemClass}">
+                        <div class="review-opt-key">${k}</div>
+                        <div style="flex:1;">${this.escHtml(optText)}</div>
+                        ${badgeHtml}
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+
+                <!-- Explanation & Evaluation Box -->
+                <div class="review-eval-box ${isCor ? 'eval-correct' : 'eval-wrong'}">
+                  <div style="font-size:1.2rem;line-height:1;">${isCor ? '💡' : '📌'}</div>
+                  <div style="flex:1;">
+                    <div style="font-weight:700;margin-bottom:0.25rem;">
+                      ${isCor ? 'Evaluasi: Jawaban Anda Tepat!' : 'Evaluasi Jawaban:'}
+                    </div>
+                    <div style="font-size:0.85rem;color:var(--text-sub);">
+                      ${isCor 
+                        ? `Pilihan Anda <b>(${userAns})</b> sudah sesuai dengan kunci jawaban yang benar.` 
+                        : (userAns === '—' 
+                            ? `Anda belum memilih jawaban pada nomor ini. Kunci jawaban yang benar adalah <b>Opsi ${corAns}: "${this.escHtml(corText)}"</b>.` 
+                            : `Anda memilih <b>Opsi ${userAns}</b>. Jawaban yang tepat seharusnya adalah <b>Opsi ${corAns}: "${this.escHtml(corText)}"</b>.`)}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <div style="text-align:center;margin-top:2rem;">
+          <button class="btn btn-primary btn-lg" onclick="App.renderAppLayout('dashboard')">
+            🏠 Selesai & Kembali ke Dashboard
+          </button>
+        </div>
+
+      </div>
+    `);
+  },
+
+  filterReviewQuestions(type) {
+    ['all', 'correct', 'wrong'].forEach(t => {
+      const b = document.getElementById(`btn-filter-${t}`);
+      if (b) {
+        if (t === type) b.classList.add('active');
+        else b.classList.remove('active');
+      }
+    });
+
+    const cards = document.querySelectorAll('#review-questions-list .review-q-card');
+    cards.forEach(card => {
+      const s = card.getAttribute('data-status');
+      if (type === 'all' || s === type) {
+        card.style.display = 'block';
+      } else {
+        card.style.display = 'none';
+      }
+    });
+  },
+
+  openExamReview(attemptId) {
+    if (!attemptId) return;
+    this.setContent(`
+      <div class="boot-screen"><div class="boot-shield">
+        <div class="boot-text">Memuat Pembahasan Ujian…</div>
+        <div class="boot-bar"><div class="boot-bar-fill"></div></div>
+      </div></div>
+    `);
+
+    fetch(`api/exam.php?action=review&attempt_id=${attemptId}`)
+      .then(r => r.json())
+      .then(res => {
+        if (!res.success) {
+          alert(res.message || 'Gagal memuat pembahasan ujian.');
+          this.loadStudentCbt();
+          return;
+        }
+        this.renderExamReview(res);
+      })
+      .catch(() => {
+        alert('Terjadi kesalahan koneksi saat memuat pembahasan ujian.');
+        this.loadStudentCbt();
+      });
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     REAL-TIME PROCTORING DASHBOARD
+  ──────────────────────────────────────────────────────────────────────────── */
+  loadProctoringDashboard() {
+    fetch('api/quizzes.php')
+      .then(r => r.json())
+      .then(d => {
+        const quizzes = d.quizzes || d.data || [];
+        const qOpts = quizzes.map(q => `<option value="${q.id}">${this.escHtml(q.title)}</option>`).join('');
+
+        this.setContent(`
+          <div class="flex-between mb-3">
+            <div>
+              <div class="section-title">🛡️ Laman Pengawasan Ujian Real-Time (Proctoring Center)</div>
+              <div class="section-sub">Monitoring live camera feed, status koneksi, dan deteksi kecurangan siswa SMKN 1 CIBINONG.</div>
+            </div>
+            <div class="flex-gap-1">
+              <button class="btn btn-secondary" onclick="App.refreshProctoringGrid()">🔄 Refresh Manual</button>
+            </div>
+          </div>
+
+          <div class="card mb-3">
+            <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
+              <div class="form-group" style="flex:1;min-width:220px;margin:0;">
+                <label class="form-label" style="font-size:0.78rem;margin-bottom:0.2rem;">Filter Paket Ujian</label>
+                <select id="proctor-quiz-filter" class="form-control" onchange="App.refreshProctoringGrid()">
+                  <option value="0">-- Semua Ujian Aktif --</option>
+                  ${qOpts}
+                </select>
+              </div>
+              <div style="display:flex;gap:1.5rem;align-items:center;margin-left:auto;background:var(--bg-canvas);padding:0.6rem 1rem;border-radius:var(--r-md);border:1px solid var(--border-subtle);">
+                <div><small style="color:var(--text-muted);display:block;font-size:0.7rem;">STATUS MONITORING</small><span style="color:var(--emerald);font-weight:700;font-size:0.85rem;">● Live Sync (Setiap 10s)</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="proctoring-grid-container">
+            <div class="boot-screen"><div class="boot-shield"><div class="boot-text">Memuat data pengawasan…</div></div></div>
+          </div>
+        `);
+
+        this.refreshProctoringGrid();
+
+        if (this.proctorPollTimer) clearInterval(this.proctorPollTimer);
+        this.proctorPollTimer = setInterval(() => {
+          if (document.getElementById('proctoring-grid-container')) {
+            this.refreshProctoringGrid(true);
+          } else {
+            clearInterval(this.proctorPollTimer);
+          }
+        }, 10000);
+      });
+  },
+
+  refreshProctoringGrid(silent = false) {
+    const quizFilter = document.getElementById('proctor-quiz-filter');
+    const quizId = quizFilter ? quizFilter.value : 0;
+    const container = document.getElementById('proctoring-grid-container');
+
+    if (!container) return;
+
+    fetch(`api/exam.php?action=proctor_monitor&quiz_id=${quizId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!d.success) {
+          if (!silent) container.innerHTML = `<div class="empty-state"><p>${d.message || 'Gagal memuat monitoring.'}</p></div>`;
+          return;
+        }
+
+        const attempts = d.attempts || [];
+        if (!attempts.length) {
+          container.innerHTML = `
+            <div class="empty-state card">
+              <div class="empty-icon">🛡️</div>
+              <h3 style="margin-bottom:0.25rem;">Belum ada siswa yang sedang mengerjakan ujian</h3>
+              <p class="text-muted" style="font-size:0.85rem;">Grid kamera dan status realtime akan otomatis tampil ketika siswa memulai ujian CBT.</p>
+            </div>
+          `;
+          return;
+        }
+
+        const cards = attempts.map(att => {
+          const isDisq = att.status === 'disqualified';
+          const isComp = att.status === 'completed';
+          const violCount = att.violations_count || 0;
+          let statusBadge = `<span class="badge badge-cyan">● Sedang Ujian</span>`;
+          if (isDisq) statusBadge = `<span class="badge badge-danger">🚫 Didiskualifikasi</span>`;
+          else if (isComp) statusBadge = `<span class="badge badge-green">✅ Selesai</span>`;
+
+          let violBadge = `<span class="badge badge-green">Violations: ${violCount}/3</span>`;
+          if (violCount === 1 || violCount === 2) violBadge = `<span class="badge badge-amber">Violations: ${violCount}/3</span>`;
+          else if (violCount >= 3 || isDisq) violBadge = `<span class="badge badge-danger">Violations: ${violCount}/3</span>`;
+
+          const snapSrc = att.latest_snapshot ? att.latest_snapshot : '../cbt/images/login-hero.jpg';
+          const snapTime = att.latest_snapshot_time ? new Date(att.latest_snapshot_time).toLocaleTimeString('id-ID') : 'Belum ada feed';
+
+          const logsHtml = (att.cheat_logs || []).map(l => `<div style="font-size:0.7rem;color:var(--danger);margin-top:2px;">⚠️ ${(l.created_at || '').substring(11,19)} - ${this.escHtml(l.details)}</div>`).join('');
+
+          return `
+            <div class="card" style="padding:1rem;border:1px solid ${isDisq ? 'var(--danger)' : 'var(--border)'};position:relative;background:var(--bg-card);">
+              <div style="display:flex;gap:0.75rem;align-items:flex-start;">
+                <!-- Snapshot Thumbnail -->
+                <div style="width:110px;height:85px;background:#000;border-radius:var(--r-md);overflow:hidden;position:relative;flex-shrink:0;border:1px solid var(--border);">
+                  <img src="${snapSrc}" style="width:100%;height:100%;object-fit:cover;" alt="Webcam Feed">
+                  <div style="position:absolute;bottom:3px;right:3px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.6rem;padding:1px 4px;border-radius:3px;">📷 ${snapTime}</div>
+                  <div style="position:absolute;top:3px;left:3px;width:7px;height:7px;border-radius:50%;background:${isDisq ? 'var(--danger)' : 'var(--emerald)'};"></div>
+                </div>
+
+                <!-- Info -->
+                <div style="flex:1;min-width:0;">
+                  <div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;margin-bottom:0.25rem;">
+                    ${statusBadge}
+                    ${violBadge}
+                  </div>
+                  <div style="font-weight:700;font-size:0.95rem;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escHtml(att.student_name)}</div>
+                  <div style="font-size:0.78rem;color:var(--text-muted);">${this.escHtml(att.class_name || 'Siswa')} · NIS: ${this.escHtml(att.student_nis || att.student_username)}</div>
+                  <div style="font-size:0.75rem;color:var(--cyan);margin-top:0.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Ujian: ${this.escHtml(att.quiz_title || '')}</div>
+                </div>
+              </div>
+
+              ${logsHtml ? `<div style="background:var(--danger-dim);border:1px solid rgba(239,68,68,0.2);padding:0.4rem 0.6rem;border-radius:var(--r-sm);margin-top:0.75rem;">${logsHtml}</div>` : ''}
+
+              <div style="display:flex;gap:0.5rem;margin-top:0.75rem;padding-top:0.6rem;border-top:1px solid var(--border-subtle);">
+                <button class="btn btn-secondary btn-sm" style="flex:1;justify-content:center;" onclick="App.resetStudentExam(${att.id})">🔄 Reset Ujian</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        container.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(320px, 1fr));gap:1rem;">${cards}</div>`;
+      });
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     ATTENDANCE INPUT MODULE
+  ──────────────────────────────────────────────────────────────────────────── */
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     REKAP ABSENSI
+  ──────────────────────────────────────────────────────────────────────────── */
+  loadRekapAbsensi() {
+    const months = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    const currentYear = new Date().getFullYear();
+
+    fetch('api/classes.php')
+      .then(r => r.json())
+      .then(d => {
+        const classes = d.classes || [];
+        const classOpts = classes.map(cl => `<option value="${cl.id}">${this.escHtml(cl.class_name)}</option>`).join('');
+        const yearOpts  = [currentYear, currentYear-1, currentYear+1].map(y => `<option value="${y}" ${y === currentYear ? 'selected' : ''}>${y}</option>`).join('');
+        const monthOpts = months.map((m, i) => `<option value="${i+1}" ${i+1 === this.rekapMonth ? 'selected' : ''}>${m}</option>`).join('');
+
+        this.setContent(`
+          <div class="mb-3">
+            <div class="section-title">📊 Rekap Absensi Siswa</div>
+            <div class="section-sub">Laporan rekapitulasi kehadiran bulanan dan semesteran SMKN 1 CIBINONG.</div>
+          </div>
+
+          <!-- Print Header (hidden on screen) -->
+          <div class="print-header">
+            <h2>REKAPITULASI PRESENSI SISWA</h2>
+            <h3>SMKN 1 CIBINONG — Tahun Ajaran 2026/2027</h3>
+          </div>
+
+          <!-- Filter & Mode Bar -->
+          <div class="rekap-filter-bar">
+            <!-- Mode Tabs -->
+            <div class="filter-group">
+              <span class="filter-label">Mode Rekap</span>
+              <div class="rekap-mode-tabs">
+                <div class="mode-tab ${this.rekapMode === 'monthly' ? 'active' : ''}" onclick="App.setRekapMode('monthly')">📅 Bulanan</div>
+                <div class="mode-tab ${this.rekapMode === 'semester' ? 'active' : ''}" onclick="App.setRekapMode('semester')">📆 Semester</div>
+              </div>
+            </div>
+
+            <!-- Kelas -->
+            <div class="filter-group">
+              <span class="filter-label">Kelas / Rombel</span>
+              <select class="filter-select" id="rek-class">${classOpts}</select>
+            </div>
+
+            <!-- Monthly filters -->
+            <div id="rekap-monthly-filters" class="${this.rekapMode === 'monthly' ? '' : 'hidden'}" style="display:contents;">
+              <div class="filter-group">
+                <span class="filter-label">Bulan</span>
+                <select class="filter-select" id="rek-month">${monthOpts}</select>
+              </div>
+              <div class="filter-group">
+                <span class="filter-label">Tahun</span>
+                <select class="filter-select" id="rek-year">${yearOpts}</select>
+              </div>
+            </div>
+
+            <!-- Semester filters -->
+            <div id="rekap-semester-filters" class="${this.rekapMode === 'semester' ? '' : 'hidden'}" style="display:contents;">
+              <div class="filter-group">
+                <span class="filter-label">Semester</span>
+                <select class="filter-select" id="rek-sem">
+                  <option value="1">Ganjil (Jul–Jan)</option>
+                  <option value="2">Genap (Feb–Jun)</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <span class="filter-label">Tahun Dimulai</span>
+                <select class="filter-select" id="rek-sem-year">${yearOpts}</select>
+              </div>
+            </div>
+
+            <div style="align-self:flex-end;">
+              <button class="btn btn-primary" onclick="App.fetchRekap()">🔍 Tampilkan Rekap</button>
+            </div>
+          </div>
+
+          <!-- Results Area -->
+          <div id="rekap-results">
+            <div class="card"><div class="empty-state"><div class="empty-icon">📊</div><p>Pilih filter dan klik "Tampilkan Rekap" untuk memuat data kehadiran.</p></div></div>
+          </div>
+        `);
+
+        // Auto-load first class
+        if (classes.length) {
+          this.rekapClassId = classes[0].id;
+          this.fetchRekap();
+        }
+      });
+  },
+
+  setRekapMode(mode) {
+    this.rekapMode = mode;
+    document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.textContent.toLowerCase().includes(mode === 'monthly' ? 'bulanan' : 'semester')));
+    document.getElementById('rekap-monthly-filters').classList.toggle('hidden', mode !== 'monthly');
+    document.getElementById('rekap-semester-filters').classList.toggle('hidden', mode !== 'semester');
+  },
+
+  fetchRekap() {
+    const classId = document.getElementById('rek-class')?.value || this.rekapClassId;
+    let url = `api/rekap_attendance.php?class_id=${classId}&mode=${this.rekapMode}`;
+
+    if (this.rekapMode === 'monthly') {
+      const month = document.getElementById('rek-month')?.value || this.rekapMonth;
+      const year  = document.getElementById('rek-year')?.value  || this.rekapYear;
+      url += `&month=${month}&year=${year}`;
+    } else {
+      const sem  = document.getElementById('rek-sem')?.value      || 1;
+      const year = document.getElementById('rek-sem-year')?.value || this.rekapYear;
+      url += `&semester=${sem}&year=${year}`;
+    }
+
+    document.getElementById('rekap-results').innerHTML = `<div class="card"><div class="empty-state"><div class="boot-text">Memuat data rekap…</div></div></div>`;
+
+    fetch(url)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) { document.getElementById('rekap-results').innerHTML = `<div class="card"><div class="empty-state"><p>${data.message}</p></div></div>`; return; }
+
+        const s  = data.summary || {};
+        const H  = parseInt(s.hadir  || 0);
+        const I  = parseInt(s.izin   || 0);
+        const S  = parseInt(s.sakit  || 0);
+        const A  = parseInt(s.alpa   || 0);
+        const Tt = parseInt(s.total  || 1);
+        const pctGlobal = Tt > 0 ? Math.round((H / Tt) * 100) : 0;
+
+        // Trend chart data
+        const trend = data.trend || [];
+        const chartLabels  = trend.map(t => t.label);
+        const chartHadir   = trend.map(t => t.hadir);
+        const chartIzin    = trend.map(t => t.izin);
+        const chartSakit   = trend.map(t => t.sakit);
+        const chartAlpa    = trend.map(t => t.alpa);
+
+        // Table rows
+        const rows = (data.rekap || []).map((r, i) => {
+          const pct = r.pct_hadir;
+          const pctClass = pct >= 85 ? 'att-pct-good' : pct >= 70 ? 'att-pct-ok' : 'att-pct-bad';
+          return `
+            <tr>
+              <td class="td-mono">${i + 1}</td>
+              <td class="td-main">${this.escHtml(r.name)}</td>
+              <td class="td-mono">${r.nisn}</td>
+              <td class="att-h">${r.hadir}</td>
+              <td class="att-i">${r.izin}</td>
+              <td class="att-s">${r.sakit}</td>
+              <td class="att-a">${r.alpa}</td>
+              <td><span class="badge ${r.terlambat > 0 ? 'badge-amber' : 'badge-muted'}">${r.terlambat}x</span></td>
+              <td>
+                <div class="pct-bar-wrap">
+                  <div class="pct-bar"><div class="pct-bar-fill" style="width:${pct}%;background:${pct >= 85 ? 'var(--grad-green)' : pct >= 70 ? 'var(--grad-amber)' : 'var(--grad-danger)'};"></div></div>
+                  <span class="${pctClass}">${pct}%</span>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('') || `<tr><td colspan="9"><div class="empty-state"><p>Tidak ada data untuk filter ini.</p></div></td></tr>`;
+
+        document.getElementById('rekap-results').innerHTML = `
+          <!-- KPI Summary -->
+          <div class="rekap-summary-kpi">
+            <div class="kpi-card">
+              <div class="kpi-label text-muted">Kelas</div>
+              <div class="kpi-value text-cyan" style="font-size:1.2rem;font-weight:800;">${this.escHtml(data.class_name)}</div>
+              <div class="kpi-sub">${this.escHtml(data.label)}</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label" style="color:var(--emerald);">Total Hadir</div>
+              <div class="kpi-value text-green">${H}</div>
+              <div class="kpi-sub">Pertemuan hadir</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label" style="color:var(--blue);">Izin</div>
+              <div class="kpi-value" style="color:var(--blue);">${I}</div>
+              <div class="kpi-sub">Pertemuan izin</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label" style="color:var(--amber);">Sakit</div>
+              <div class="kpi-value text-amber">${S}</div>
+              <div class="kpi-sub">Pertemuan sakit</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label" style="color:var(--danger);">Alpa (Tanpa Ket.)</div>
+              <div class="kpi-value text-danger">${A}</div>
+              <div class="kpi-sub">Pertemuan alpa</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label text-muted">Kehadiran Global</div>
+              <div class="kpi-value ${pctGlobal >= 85 ? 'text-green' : pctGlobal >= 70 ? 'text-amber' : 'text-danger'}">${pctGlobal}%</div>
+              <div class="kpi-sub">Dari total ${Tt} pertemuan</div>
+            </div>
+          </div>
+
+          <!-- Charts -->
+          <div class="chart-row">
+            <div class="chart-card">
+              <div class="card-title" style="margin-bottom:0.75rem;">📊 Tren Kehadiran per Bulan</div>
+              <canvas id="trend-chart" height="180"></canvas>
+            </div>
+            <div class="chart-card">
+              <div class="card-title" style="margin-bottom:0.75rem;">🍩 Komposisi Kehadiran</div>
+              <canvas id="donut-chart" height="180"></canvas>
+            </div>
+          </div>
+
+          <!-- Export Buttons -->
+          <div class="rekap-export-bar">
+            <button class="btn btn-secondary" onclick="App.printRekap()">🖨️ Cetak PDF</button>
+            <button class="btn btn-success" onclick="App.exportExcel()">📥 Export Excel (.xlsx)</button>
+          </div>
+
+          <!-- Data Table -->
+          <div class="card">
+            <div class="card-title" style="margin-bottom:0.75rem;">📋 Tabel Rekap Kehadiran Siswa</div>
+            <div class="table-wrapper">
+              <table class="data-table" id="rekap-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Nama Siswa</th>
+                    <th>NISN</th>
+                    <th class="att-h">H</th>
+                    <th class="att-i">I</th>
+                    <th class="att-s">S</th>
+                    <th class="att-a">A</th>
+                    <th>Terlambat</th>
+                    <th>% Hadir</th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        `;
+
+        // Render Charts
+        this._renderRekapCharts(chartLabels, chartHadir, chartIzin, chartSakit, chartAlpa, H, I, S, A);
+      });
+  },
+
+  _renderRekapCharts(labels, hadir, izin, sakit, alpa, sH, sI, sS, sA) {
+    const isDark   = this.theme === 'dark';
+    const gridClr  = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+    const tickClr  = isDark ? '#94a8c0' : '#3d5a7a';
+
+    // Destroy previous
+    if (this._chartTrend) { this._chartTrend.destroy(); this._chartTrend = null; }
+    if (this._chartDonut) { this._chartDonut.destroy(); this._chartDonut = null; }
+
+    const trendCtx = document.getElementById('trend-chart');
+    if (trendCtx && labels.length > 0) {
+      this._chartTrend = new Chart(trendCtx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Hadir', data: hadir, backgroundColor: 'rgba(16,185,129,0.75)',  borderRadius: 4 },
+            { label: 'Izin',  data: izin,  backgroundColor: 'rgba(56,189,248,0.75)',  borderRadius: 4 },
+            { label: 'Sakit', data: sakit, backgroundColor: 'rgba(245,158,11,0.75)',  borderRadius: 4 },
+            { label: 'Alpa',  data: alpa,  backgroundColor: 'rgba(239,68,68,0.75)',   borderRadius: 4 },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: tickClr, font: { family: 'Inter', size: 11 } } } },
+          scales: {
+            x: { stacked: true, ticks: { color: tickClr }, grid: { color: gridClr } },
+            y: { stacked: true, ticks: { color: tickClr }, grid: { color: gridClr } }
+          }
+        }
+      });
+    }
+
+    const donutCtx = document.getElementById('donut-chart');
+    if (donutCtx) {
+      this._chartDonut = new Chart(donutCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Hadir', 'Izin', 'Sakit', 'Alpa'],
+          datasets: [{ data: [sH, sI, sS, sA], backgroundColor: ['rgba(16,185,129,0.8)','rgba(56,189,248,0.8)','rgba(245,158,11,0.8)','rgba(239,68,68,0.8)'], borderWidth: 0, hoverOffset: 8 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: '65%',
+          plugins: { legend: { position: 'bottom', labels: { color: tickClr, font: { family: 'Inter', size: 11 }, padding: 12 } } }
+        }
+      });
+    }
+  },
+
+  printRekap() { window.print(); },
+
+  exportExcel() {
+    if (typeof XLSX === 'undefined') { alert('Perpustakaan XLSX belum dimuat. Pastikan koneksi internet aktif.'); return; }
+    const table = document.getElementById('rekap-table');
+    if (!table) { alert('Tabel rekap tidak ditemukan.'); return; }
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.table_to_sheet(table);
+    ws['!cols'] = [{ wch: 4 },{ wch: 30 },{ wch: 14 },{ wch: 6 },{ wch: 6 },{ wch: 6 },{ wch: 6 },{ wch: 10 },{ wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'Rekap Absensi');
+    const now = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `Rekap_Absensi_SMKN1_CIBINONG_${now}.xlsx`);
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     GRADES
+  ──────────────────────────────────────────────────────────────────────────── */
+  loadGrades() {
+    const isSiswa = this.currentUser.role === 'siswa';
+    fetch('api/grades.php')
+      .then(r => r.json())
+      .then(data => {
+        const grades = data.grades || [];
+
+        const rows = grades.length ? grades.map((g, i) => {
+          const scoreColor = g.score >= 85 ? 'text-green' : g.score >= 70 ? 'text-amber' : 'text-danger';
+          return `
+            <tr>
+              <td class="td-mono">${i + 1}</td>
+              ${!isSiswa ? `<td class="td-main">${this.escHtml(g.student_name)}</td><td class="td-mono">${g.student_nis || '—'}</td>` : ''}
+              <td class="td-main">${this.escHtml(g.quiz_title)}</td>
+              <td><span class="font-mono font-800 ${scoreColor}" style="font-size:1.1rem;">${g.score}</span><span class="text-muted"> /100</span></td>
+              <td><span class="badge ${g.score >= 70 ? 'badge-green' : 'badge-danger'}">${g.score >= 70 ? 'LULUS' : 'TIDAK LULUS'}</span></td>
+              <td class="td-mono" style="font-size:0.78rem;">${g.finished_at ? g.finished_at.split(' ')[0] : '—'}</td>
+            </tr>
+          `;
+        }).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">🏆</div><p>Belum ada data nilai ujian.</p></div></td></tr>`;
+
+        this.setContent(`
+          <div class="mb-3">
+            <div class="section-title">🏆 Daftar Nilai Ujian CBT</div>
+            <div class="section-sub">Rekap nilai ujian CBT yang telah diselesaikan.</div>
+          </div>
+          <div class="card">
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    ${!isSiswa ? '<th>Nama Siswa</th><th>NIS</th>' : ''}
+                    <th>Ujian</th>
+                    <th>Skor</th>
+                    <th>Keterangan</th>
+                    <th>Tanggal Selesai</th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        `);
+      });
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     USER MANAGEMENT
+  ──────────────────────────────────────────────────────────────────────────── */
+  loadUsers() {
+    if (this.currentUser.role === 'siswa') { this.renderAppLayout('dashboard'); return; }
+    Promise.all([fetch('api/users.php').then(r => r.json()), fetch('api/classes.php').then(r => r.json())])
+      .then(([ud, cd]) => {
+        const users   = ud.users   || [];
+        const classes = cd.classes || [];
+        const roleMap = { admin: '🛡️ Admin', guru: '👨‍🏫 Guru', siswa: '🎓 Siswa' };
+
+        const rows = users.map((u, i) => `
+          <tr>
+            <td class="td-mono">${i + 1}</td>
+            <td>
+              <div class="nav-avatar" style="width:30px;height:30px;font-size:0.72rem;display:inline-flex;margin-right:0.5rem;">${u.name.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase()}</div>
+              <span class="font-700">${this.escHtml(u.name)}</span>
+            </td>
+            <td class="td-mono">${this.escHtml(u.username)}</td>
+            <td class="td-mono">${u.nip_nis || '—'}</td>
+            <td><span class="badge ${u.role === 'admin' ? 'badge-cyan' : u.role === 'guru' ? 'badge-blue' : 'badge-muted'}">${roleMap[u.role] || u.role}</span></td>
+            <td>${u.class_name ? `<span class="badge badge-muted">${this.escHtml(u.class_name)}</span>` : '—'}</td>
+            <td>
+              ${u.username !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="App.deleteUser(${u.id})">🗑️</button>` : '<span class="text-muted">—</span>'}
+            </td>
+          </tr>
+        `).join('');
+
+        const classOpts = classes.map(cl => `<option value="${cl.id}">${this.escHtml(cl.class_name)}</option>`).join('');
+
+        this.setContent(`
+          <div class="flex-between mb-3">
+            <div>
+              <div class="section-title">👥 Manajemen Pengguna</div>
+              <div class="section-sub">Kelola akun Siswa, Guru, dan Administrator SMKN 1 CIBINONG.</div>
+            </div>
+            <button class="btn btn-primary" onclick="App.openAddUserModal()">➕ Tambah Pengguna</button>
+          </div>
+
+          <div class="card">
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead><tr><th>#</th><th>Nama</th><th>Username</th><th>NIP / NIS</th><th>Role</th><th>Kelas</th><th>Hapus</th></tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        `);
+        this._classOpts = classOpts;
+      });
+  },
+
+  openAddUserModal() {
+    this.openModal('Tambah Pengguna Baru', `
+      <form onsubmit="App.handleAddUser(event)">
+        <div class="form-group mb-2"><label class="form-label">Nama Lengkap</label><input type="text" id="u-name" class="form-control" required placeholder="cth: Ahmad Fadhillah"></div>
+        <div class="form-group mb-2"><label class="form-label">Username</label><input type="text" id="u-user" class="form-control" required placeholder="cth: siswa1"></div>
+        <div class="form-group mb-2"><label class="form-label">NIP / NISN</label><input type="text" id="u-nis" class="form-control" placeholder="cth: 0089712345"></div>
+        <div class="form-group mb-2">
+          <label class="form-label">Role</label>
+          <select id="u-role" class="form-control" onchange="App.toggleClassField()">
+            <option value="siswa">🎓 Siswa</option>
+            <option value="guru">👨‍🏫 Guru</option>
+            <option value="admin">🛡️ Admin</option>
+          </select>
+        </div>
+        <div class="form-group mb-2" id="u-class-group">
+          <label class="form-label">Kelas (Siswa)</label>
+          <select id="u-class" class="form-control">${this._classOpts || ''}</select>
+        </div>
+        <div class="form-group mb-3"><label class="form-label">Password</label><input type="password" id="u-pass" class="form-control" required placeholder="Minimal 6 karakter"></div>
+        <div class="flex-end flex-gap-1"><button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Simpan Pengguna</button></div>
+      </form>
+    `);
+  },
+
+  toggleClassField() {
+    const role = document.getElementById('u-role')?.value;
+    const grp  = document.getElementById('u-class-group');
+    if (grp) grp.style.display = role === 'siswa' ? '' : 'none';
+  },
+
+  handleAddUser(e) {
+    e.preventDefault();
+    const role     = document.getElementById('u-role').value;
+    const classId  = role === 'siswa' ? document.getElementById('u-class').value : null;
+    fetch('api/users.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', name: document.getElementById('u-name').value, username: document.getElementById('u-user').value, nip_nis: document.getElementById('u-nis').value, role, class_id: classId, password: document.getElementById('u-pass').value }) })
+      .then(r => r.json()).then(d => { if (d.success) { this.closeModal(); this.loadUsers(); } else alert(d.message); });
+  },
+
+  deleteUser(id) {
+    if (!confirm('Hapus pengguna ini?')) return;
+    fetch('api/users.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', user_id: id }) }).then(() => this.loadUsers());
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     MODAL HELPERS
+  ──────────────────────────────────────────────────────────────────────────── */
+  openModal(title, body, extraClass = 'modal-box') {
+    let existing = document.getElementById('global-modal');
+    if (existing) existing.remove();
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.id = 'global-modal';
+    backdrop.innerHTML = `
+      <div class="${extraClass}">
+        <div class="modal-header">
+          <div class="modal-title">${title}</div>
+          <button class="modal-close" onclick="App.closeModal()">×</button>
+        </div>
+        ${body}
+      </div>
+    `;
+    backdrop.addEventListener('click', e => { if (e.target === backdrop) this.closeModal(); });
+    document.body.appendChild(backdrop);
+  },
+
+  closeModal() {
+    document.getElementById('global-modal')?.remove();
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     ANNOUNCEMENTS MODULE (Full CRUD)
+  ──────────────────────────────────────────────────────────────────────────── */
+  _annFilterTarget: 'all',
+
+  loadAnnouncements() {
+    const isStaff = ['admin', 'guru'].includes(this.currentUser?.role);
+    this.setContent(`
+      <div class="flex-between mb-3">
+        <div>
+          <div class="section-title">📢 Pengumuman & Informasi Sekolah</div>
+          <div class="section-sub">Papan informasi dan pengumuman resmi SMKN 1 CIBINONG.</div>
+        </div>
+        ${isStaff ? `<button class="btn btn-primary" onclick="App.showAnnForm()">➕ Buat Pengumuman</button>` : ''}
+      </div>
+
+      <div class="card mb-3" style="padding:1rem;">
+        <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+          <div style="display:flex;gap:0.35rem;">
+            <button class="btn btn-sm ${this._annFilterTarget === 'all' ? 'btn-primary' : 'btn-secondary'}" onclick="App.filterAnnouncements('all')">🌐 Semua Target</button>
+            <button class="btn btn-sm ${this._annFilterTarget === 'siswa' ? 'btn-primary' : 'btn-secondary'}" onclick="App.filterAnnouncements('siswa')">🎓 Siswa</button>
+            <button class="btn btn-sm ${this._annFilterTarget === 'guru' ? 'btn-primary' : 'btn-secondary'}" onclick="App.filterAnnouncements('guru')">👨‍🏫 Guru</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="ann-list" class="cards-grid">
+        <div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">⏳</div><p>${this.t('loading')}</p></div>
+      </div>
+    `);
+    this._refreshAnnList();
+  },
+
+  filterAnnouncements(target) {
+    this._annFilterTarget = target;
+    this.loadAnnouncements();
+  },
+
+  _refreshAnnList() {
+    fetch('api/announcements.php')
+      .then(r => r.json())
+      .then(res => {
+        const el = document.getElementById('ann-list');
+        if (!el) return;
+        let items = res.data || res.announcements || [];
+
+        if (this._annFilterTarget && this._annFilterTarget !== 'all') {
+          items = items.filter(a => a.target === 'all' || a.target === this._annFilterTarget);
+        }
+
+        const isStaff = ['admin', 'guru'].includes(this.currentUser?.role);
+        if (!items.length) {
+          el.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">📢</div><p>Belum ada pengumuman terdaftar.</p></div>`;
+          return;
+        }
+
+        el.innerHTML = items.map(a => `
+          <div class="card" style="position:relative; ${a.is_pinned ? 'border-left: 4px solid var(--amber);' : ''}">
+            <div class="flex-between mb-2">
+              <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+                ${a.is_pinned ? '<span class="badge badge-amber">📌 Disematkan</span>' : ''}
+                <span class="badge badge-${a.target === 'siswa' ? 'cyan' : a.target === 'guru' ? 'amber' : 'blue'}">
+                  🎯 Target: ${a.target === 'all' ? 'Semua' : (a.target === 'siswa' ? 'Siswa' : 'Guru')}
+                </span>
+              </div>
+              ${isStaff ? `
+                <div style="display:flex;gap:0.35rem;">
+                  <button class="btn btn-secondary btn-sm" onclick='App.showAnnForm(${JSON.stringify(a).replace(/'/g, "&#39;")})' title="Edit Pengumuman">✏️ Edit</button>
+                  <button class="btn btn-danger btn-sm" onclick="App.deleteAnn(${a.id})" title="Hapus Pengumuman">🗑️ Hapus</button>
+                </div>
+              ` : ''}
+            </div>
+            <h3 style="font-size:1.1rem;margin:0.25rem 0 0.5rem;color:var(--text-main);">${this.escHtml(a.title)}</h3>
+            <p style="font-size:0.88rem;color:var(--text-sub);line-height:1.65;white-space:pre-line;margin-bottom:1rem;">${this.escHtml(a.content)}</p>
+            <div style="font-size:0.78rem;color:var(--text-muted);border-top:1px solid var(--border);padding-top:0.6rem;display:flex;justify-content:space-between;">
+              <span>✍️ Oleh: <b>${this.escHtml(a.author_name)}</b></span>
+              <span>📅 ${new Date(a.created_at).toLocaleString('id-ID', {dateStyle:'medium', timeStyle:'short'})}</span>
+            </div>
+          </div>
+        `).join('');
+      });
+  },
+
+  showAnnForm(existing) {
+    const isEdit = !!existing;
+    this.openModal(isEdit ? 'Edit Pengumuman' : 'Buat Pengumuman Baru', `
+      <form onsubmit="App.saveAnn(event, ${existing?.id || 'null'})">
+        <div class="form-group mb-2">
+          <label class="form-label">Judul Pengumuman *</label>
+          <input class="form-control" id="ann-title" value="${this.escHtml(existing?.title || '')}" placeholder="Masukkan judul pengumuman" required>
+        </div>
+        <div class="form-group mb-2">
+          <label class="form-label">Isi Pengumuman *</label>
+          <textarea class="form-control" id="ann-content" rows="6" placeholder="Tuliskan isi pengumuman lengkap..." required>${this.escHtml(existing?.content || '')}</textarea>
+        </div>
+        <div class="grid-2col mb-3" style="gap:1rem;">
+          <div class="form-group">
+            <label class="form-label">Target Penerima</label>
+            <select class="form-control" id="ann-target">
+              <option value="all" ${(existing?.target || 'all') === 'all' ? 'selected' : ''}>Semua (Siswa & Guru)</option>
+              <option value="siswa" ${existing?.target === 'siswa' ? 'selected' : ''}>Khusus Siswa</option>
+              <option value="guru" ${existing?.target === 'guru' ? 'selected' : ''}>Khusus Guru</option>
+            </select>
+          </div>
+          <div class="form-group" style="display:flex;align-items:center;gap:0.5rem;padding-top:1.5rem;">
+            <input type="checkbox" id="ann-pinned" ${existing?.is_pinned ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer;">
+            <label for="ann-pinned" class="form-label" style="margin:0;cursor:pointer;">📌 Sematkan Pengumuman (Pin to top)</label>
+          </div>
+        </div>
+        <div class="flex-end flex-gap-1">
+          <button type="button" class="btn btn-secondary" onclick="App.closeModal()">${this.t('cancel')}</button>
+          <button type="submit" class="btn btn-primary">Simpan Pengumuman</button>
+        </div>
+      </form>
+    `);
+  },
+
+  saveAnn(e, id) {
+    if (e && e.preventDefault) e.preventDefault();
+    const title   = document.getElementById('ann-title')?.value?.trim();
+    const content = document.getElementById('ann-content')?.value?.trim();
+    const target  = document.getElementById('ann-target')?.value || 'all';
+    const pinned  = document.getElementById('ann-pinned')?.checked ? 1 : 0;
+    if (!title || !content) { alert('Judul dan isi pengumuman wajib diisi.'); return; }
+
+    const method  = id ? 'PUT' : 'POST';
+    const payload = { title, content, target, is_pinned: pinned, ...(id ? { id } : {}) };
+
+    fetch('api/announcements.php', {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) {
+          this.closeModal();
+          this._refreshAnnList();
+          this._toast(id ? '✅ Pengumuman diperbarui.' : '✅ Pengumuman baru dipublikasikan!');
+        } else alert(res.message || 'Gagal menyimpan.');
+      });
+  },
+
+  deleteAnn(id) {
+    if (!confirm('Hapus pengumuman ini?')) return;
+    fetch('api/announcements.php', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    })
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) {
+          this._refreshAnnList();
+          this._toast('✅ Pengumuman dihapus.');
+        } else alert(res.message);
+      });
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     GRADES MODULE (Weighted + CSV Export)
+  ──────────────────────────────────────────────────────────────────────────── */
+  loadGradesModule() {
+    const u = this.currentUser;
+    const isStaff = ['admin','guru'].includes(u?.role);
+
+    if (!isStaff) {
+      // Student: show own grades
+      this.setContent(`
+        <div class="hero-banner" style="padding:1.5rem 2rem;margin-bottom:1.5rem;">
+          <div><div class="hero-badge">🏆 Penilaian Akademik</div>
+            <div class="hero-title" style="font-size:1.4rem;">Daftar Nilai Saya</div>
+            <div class="hero-sub">Bobot: Tugas 30% · UTS 20% · UAS/CBT 30% · Kehadiran 20%</div>
+          </div>
+        </div>
+        <div id="grades-content" class="card">
+          <div class="empty-state"><div class="empty-icon">⏳</div><p>${this.t('loading')}</p></div>
+        </div>
+      `);
+      fetch('api/grades.php?action=list&semester=1')
+        .then(r => r.json())
+        .then(res => {
+          const el = document.getElementById('grades-content');
+          if (!el) return;
+          const rows = res.data || [];
+          if (!rows.length) { el.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><p>Belum ada nilai.</p></div>`; return; }
+          el.innerHTML = `
+            <table class="table" style="width:100%;">
+              <thead><tr>
+                <th>Mata Pelajaran</th>
+                <th style="text-align:center;">Tugas</th>
+                <th style="text-align:center;">UTS</th>
+                <th style="text-align:center;">UAS/CBT</th>
+                <th style="text-align:center;">Kehadiran</th>
+                <th style="text-align:center;">Nilai Akhir</th>
+                <th style="text-align:center;">Predikat</th>
+              </tr></thead>
+              <tbody>${rows.map(r => `
+                <tr>
+                  <td>${r.icon || '📚'} ${this.escHtml(r.course_name)}</td>
+                  <td style="text-align:center;">${r.nilai_tugas ?? '–'}</td>
+                  <td style="text-align:center;">${r.nilai_uts ?? '–'}</td>
+                  <td style="text-align:center;">${r.nilai_uas ?? '–'}</td>
+                  <td style="text-align:center;">${r.nilai_hadir ?? '–'}</td>
+                  <td style="text-align:center;font-weight:700;color:var(--accent);">${r.nilai_akhir ?? '–'}</td>
+                  <td style="text-align:center;"><span class="badge badge-${r.predikat === 'A' ? 'cyan' : r.predikat === 'B' ? 'blue' : r.predikat === 'C' ? 'amber' : 'danger'}">${r.predikat || '–'}</span></td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          `;
+        });
+      return;
+    }
+
+    // Staff: class + course picker + table
+    this.setContent(`
+      <div class="hero-banner" style="padding:1.5rem 2rem;margin-bottom:1.5rem;">
+        <div><div class="hero-badge">🏆 Penilaian Akademik</div>
+          <div class="hero-title" style="font-size:1.4rem;">Manajemen Daftar Nilai</div>
+          <div class="hero-sub">Bobot: Tugas 30% · UTS 20% · UAS/CBT 30% · Kehadiran 20%</div>
+        </div>
+        <button class="btn btn-outline" style="margin-left:auto;" onclick="App.exportGradesCSV()">📥 ${this.t('export_csv')}</button>
+      </div>
+      <div class="card" style="margin-bottom:1rem;">
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;">
+          <div class="form-group" style="margin:0;min-width:180px;">
+            <label class="form-label">Kelas</label>
+            <select class="form-control" id="grades-class-filter" onchange="App.loadGradeTable()"><option value="0">Semua Kelas</option></select>
+          </div>
+          <div class="form-group" style="margin:0;min-width:200px;">
+            <label class="form-label">Mata Pelajaran</label>
+            <select class="form-control" id="grades-course-filter" onchange="App.loadGradeTable()"><option value="0">Semua Mapel</option></select>
+          </div>
+          <div class="form-group" style="margin:0;min-width:120px;">
+            <label class="form-label">Semester</label>
+            <select class="form-control" id="grades-sem-filter" onchange="App.loadGradeTable()">
+              <option value="1" selected>Ganjil (1)</option>
+              <option value="2">Genap (2)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div id="grades-table-area" class="card">
+        <div class="empty-state"><div class="empty-icon">⏳</div><p>Pilih kelas untuk memuat nilai.</p></div>
+      </div>
+    `);
+
+    // Populate selects
+    fetch('api/classes.php').then(r => r.json()).then(res => {
+      const sel = document.getElementById('grades-class-filter');
+      if (!sel) return;
+      const list = res.classes || res.data || [];
+      list.forEach(c => sel.add(new Option(c.class_name || c.name, c.id)));
+    });
+    fetch('api/courses.php').then(r => r.json()).then(res => {
+      const sel = document.getElementById('grades-course-filter');
+      if (!sel) return;
+      const list = res.courses || res.data || [];
+      list.forEach(c => sel.add(new Option(c.course_name || c.name, c.id)));
+    });
+  },
+
+  loadGradeTable() {
+    const classId  = document.getElementById('grades-class-filter')?.value || 0;
+    const courseId = document.getElementById('grades-course-filter')?.value || 0;
+    const semester = document.getElementById('grades-sem-filter')?.value || 1;
+    const area     = document.getElementById('grades-table-area');
+    if (!area) return;
+    area.innerHTML = `<div class="empty-state"><div class="empty-icon">⏳</div><p>${this.t('loading')}</p></div>`;
+    fetch(`api/grades.php?action=list&class_id=${classId}&course_id=${courseId}&semester=${semester}`)
+      .then(r => r.json())
+      .then(res => {
+        const rows = res.data || [];
+        if (!rows.length) { area.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><p>${this.t('no_data')}</p></div>`; return; }
+        area.innerHTML = `
+          <div style="overflow-x:auto;">
+            <table class="table" style="width:100%;min-width:800px;">
+              <thead><tr>
+                <th>Nama Siswa</th><th>NIS</th><th>Kelas</th><th>Mapel</th>
+                <th style="text-align:center;">Tugas</th><th style="text-align:center;">UTS</th>
+                <th style="text-align:center;">UAS</th><th style="text-align:center;">Kehadiran</th>
+                <th style="text-align:center;">Nilai Akhir</th><th style="text-align:center;">Predikat</th>
+                <th>Aksi</th>
+              </tr></thead>
+              <tbody>${rows.map(r => `
+                <tr>
+                  <td style="font-weight:600;">${this.escHtml(r.student_name)}</td>
+                  <td style="color:var(--text-muted);font-size:0.82rem;">${this.escHtml(r.nip_nis || '–')}</td>
+                  <td>${this.escHtml(r.class_name || '–')}</td>
+                  <td>${this.escHtml(r.course_name)}</td>
+                  <td style="text-align:center;">${r.nilai_tugas ?? '–'}</td>
+                  <td style="text-align:center;">${r.nilai_uts ?? '–'}</td>
+                  <td style="text-align:center;">${r.nilai_uas ?? '–'}</td>
+                  <td style="text-align:center;">${r.nilai_hadir ?? '–'}</td>
+                  <td style="text-align:center;font-weight:700;color:var(--accent);">${r.nilai_akhir ?? '–'}</td>
+                  <td style="text-align:center;"><span class="badge badge-${r.predikat === 'A' ? 'cyan' : r.predikat === 'B' ? 'blue' : r.predikat === 'C' ? 'amber' : 'danger'}">${r.predikat || '–'}</span></td>
+                  <td><button class="btn btn-outline" style="font-size:0.75rem;padding:0.25rem 0.6rem;" onclick="App.editGrade(${JSON.stringify(r)})">✏️</button></td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      });
+  },
+
+  editGrade(row) {
+    this.showModal(`Edit Nilai — ${row.student_name}`, `
+      <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1rem;">Mapel: <b>${row.course_name}</b> · Bobot: Tugas 30% | UTS 20% | UAS 30% | Kehadiran 20%</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+        <div class="form-group"><label class="form-label">${this.t('nilai_tugas')}</label>
+          <input class="form-control" id="eg-tugas" type="number" min="0" max="100" value="${row.nilai_tugas ?? ''}" placeholder="0–100"></div>
+        <div class="form-group"><label class="form-label">${this.t('nilai_uts')}</label>
+          <input class="form-control" id="eg-uts"   type="number" min="0" max="100" value="${row.nilai_uts ?? ''}" placeholder="0–100"></div>
+        <div class="form-group"><label class="form-label">${this.t('nilai_uas')}</label>
+          <input class="form-control" id="eg-uas"   type="number" min="0" max="100" value="${row.nilai_uas ?? ''}" placeholder="0–100"></div>
+        <div class="form-group"><label class="form-label">${this.t('nilai_hadir')}</label>
+          <input class="form-control" id="eg-hadir" type="number" min="0" max="100" value="${row.nilai_hadir ?? ''}" placeholder="0–100"></div>
+      </div>
+      <div id="eg-preview" style="background:var(--accent-dim);border-radius:var(--r-md);padding:0.75rem;margin:0.5rem 0;font-size:0.88rem;color:var(--text-main);">Nilai akhir akan dihitung otomatis.</div>
+      <div style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1rem;">
+        <button class="btn btn-outline" onclick="App.closeModal()">${this.t('cancel')}</button>
+        <button class="btn btn-primary" onclick="App.saveGrade(${row.student_id},${row.course_id},${row.semester||1})">${this.t('save')}</button>
+      </div>
+    `);
+    ['eg-tugas','eg-uts','eg-uas','eg-hadir'].forEach(id => document.getElementById(id)?.addEventListener('input', () => {
+      const t = parseFloat(document.getElementById('eg-tugas').value) || 0;
+      const u = parseFloat(document.getElementById('eg-uts').value)   || 0;
+      const a = parseFloat(document.getElementById('eg-uas').value)   || 0;
+      const h = parseFloat(document.getElementById('eg-hadir').value) || 0;
+      const na = (t*0.3 + u*0.2 + a*0.3 + h*0.2).toFixed(1);
+      const pr = na >= 90 ? 'A' : na >= 80 ? 'B' : na >= 70 ? 'C' : 'D';
+      const pv = document.getElementById('eg-preview');
+      if (pv) pv.innerHTML = `Nilai Akhir: <b style="color:var(--accent);font-size:1rem;">${na}</b> &nbsp; Predikat: <span class="badge badge-cyan">${pr}</span>`;
+    }));
+  },
+
+  saveGrade(studentId, courseId, semester) {
+    const payload = {
+      student_id: studentId, course_id: courseId, semester,
+      nilai_tugas: parseFloat(document.getElementById('eg-tugas').value) || null,
+      nilai_uts:   parseFloat(document.getElementById('eg-uts').value)   || null,
+      nilai_uas:   parseFloat(document.getElementById('eg-uas').value)   || null,
+      nilai_hadir: parseFloat(document.getElementById('eg-hadir').value) || null,
+    };
+    fetch('api/grades.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) { this.closeModal(); this.loadGradeTable(); }
+        else alert(res.message || 'Gagal menyimpan nilai.');
+      });
+  },
+
+  exportGradesCSV() {
+    const classId  = document.getElementById('grades-class-filter')?.value || 0;
+    const courseId = document.getElementById('grades-course-filter')?.value || 0;
+    const semester = document.getElementById('grades-sem-filter')?.value || 1;
+    fetch(`api/grades.php?action=export&class_id=${classId}&course_id=${courseId}&semester=${semester}`)
+      .then(r => r.text())
+      .then(csv => {
+        const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `nilai_smkn1cibinong_sem${semester}.csv`;
+        a.click();
+      });
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     ATTENDANCE INPUT (Bulk + Mark All Present + Robust Class/Course Loading)
+  ──────────────────────────────────────────────────────────────────────────── */
+  _attState: { classId: 0, courseId: 0, date: '' },
+  _attStudents: [],
+
+  loadAttendanceInput() {
+    if (this.currentUser && this.currentUser.role === 'siswa') {
+      this.renderAppLayout('rekap');
+      return;
+    }
+
+    this.setContent(`
+      <div class="hero-banner" style="padding:1.5rem 2rem;margin-bottom:1.5rem;">
+        <div>
+          <div class="hero-badge">📋 Presensi Harian & Mata Pelajaran</div>
+          <div class="hero-title" style="font-size:1.4rem;">Input Presensi Siswa</div>
+          <div class="hero-sub">Kelola dan simpan daftar kehadiran siswa secara akurat per kelas, mata pelajaran, dan tanggal.</div>
+        </div>
+      </div>
+
+      <div class="card mb-3" style="margin-bottom:1rem;">
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;">
+          <div class="form-group" style="margin:0;min-width:180px;flex:1;">
+            <label class="form-label" style="font-weight:700;">Pilih Kelas *</label>
+            <select class="form-control filter-select" id="att-class" onchange="App.loadAttList()"><option value="0">Memuat Kelas…</option></select>
+          </div>
+          <div class="form-group" style="margin:0;min-width:200px;flex:1;">
+            <label class="form-label" style="font-weight:700;">Mata Pelajaran (Opsional)</label>
+            <select class="form-control filter-select" id="att-course" onchange="App.loadAttList()"><option value="0">— Presensi Harian Umum —</option></select>
+          </div>
+          <div class="form-group" style="margin:0;min-width:160px;">
+            <label class="form-label" style="font-weight:700;">Tanggal Presensi *</label>
+            <input type="date" class="form-control filter-select" id="att-date" value="${new Date().toISOString().split('T')[0]}" onchange="App.loadAttList()">
+          </div>
+          <button class="btn btn-outline" style="padding:0.55rem 1rem;" onclick="App.markAllPresent()">✅ ${this.t('mark_all_present')}</button>
+          <button class="btn btn-primary" style="padding:0.55rem 1.25rem;" onclick="App.saveAttBulk()">💾 Simpan Presensi</button>
+        </div>
+      </div>
+
+      <!-- Live Summary Bar -->
+      <div id="att-summary-bar" class="att-summary-strip" style="display:none;">
+        <span style="font-size:0.85rem;font-weight:800;color:var(--text-main);margin-right:0.5rem;">Ringkasan:</span>
+        <div class="att-stat-pill" style="color:var(--text-main);">👥 Total: <b id="att-cnt-total">0</b></div>
+        <div class="att-stat-pill" style="color:#10b981;border-color:rgba(16,185,129,0.3);">🟢 Hadir: <b id="att-cnt-hadir">0</b></div>
+        <div class="att-stat-pill" style="color:#3b82f6;border-color:rgba(59,130,246,0.3);">🔵 Izin: <b id="att-cnt-izin">0</b></div>
+        <div class="att-stat-pill" style="color:#f59e0b;border-color:rgba(245,158,11,0.3);">🟡 Sakit: <b id="att-cnt-sakit">0</b></div>
+        <div class="att-stat-pill" style="color:#ef4444;border-color:rgba(239,68,68,0.3);">🔴 Alpa: <b id="att-cnt-alpa">0</b></div>
+        <div class="att-stat-pill" style="color:var(--text-muted);">⏱️ Terlambat: <b id="att-cnt-late">0</b></div>
+      </div>
+
+      <div id="att-list-area" class="card">
+        <div class="empty-state"><div class="empty-icon">📋</div><p>Memuat daftar kelas...</p></div>
+      </div>
+    `);
+
+    Promise.all([
+      fetch('api/classes.php').then(r => r.json()).catch(() => ({})),
+      fetch('api/courses.php').then(r => r.json()).catch(() => ({}))
+    ]).then(([resClasses, resCourses]) => {
+      const selClass  = document.getElementById('att-class');
+      const selCourse = document.getElementById('att-course');
+
+      const classes = resClasses.classes || resClasses.data || [];
+      const courses = resCourses.courses || resCourses.data || [];
+
+      if (selClass) {
+        if (!classes.length) {
+          selClass.innerHTML = `<option value="0">Belum Ada Data Kelas</option>`;
+        } else {
+          selClass.innerHTML = classes.map(c => `<option value="${c.id}">${this.escHtml(c.class_name || c.name)}</option>`).join('');
+        }
+      }
+
+      if (selCourse) {
+        selCourse.innerHTML = `<option value="0">— Presensi Harian Umum —</option>` +
+          courses.map(c => `<option value="${c.id}">${this.escHtml(c.course_name || c.name)}</option>`).join('');
+      }
+
+      if (classes.length > 0) {
+        this.loadAttList();
+      } else {
+        const area = document.getElementById('att-list-area');
+        if (area) area.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p>Belum ada data kelas terdaftar.</p></div>`;
+      }
+    });
+  },
+
+  loadAttList() {
+    const classId  = parseInt(document.getElementById('att-class')?.value || 0, 10);
+    const courseId = parseInt(document.getElementById('att-course')?.value || 0, 10);
+    const date     = document.getElementById('att-date')?.value || new Date().toISOString().split('T')[0];
+    this._attState = { classId, courseId, date };
+
+    const sumBar = document.getElementById('att-summary-bar');
+    if (sumBar) sumBar.style.display = 'none';
+
+    if (!classId || classId === 0) return;
+    const area = document.getElementById('att-list-area');
+    if (area) area.innerHTML = `<div class="empty-state"><div class="empty-icon">⏳</div><p>${this.t('loading')}</p></div>`;
+
+    fetch(`api/attendance.php?action=list&class_id=${classId}&course_id=${courseId}&date=${date}`)
+      .then(r => r.json())
+      .then(res => {
+        if (!area) return;
+        const students = res.data || res.students || [];
+        if (!students.length) {
+          area.innerHTML = `<div class="empty-state"><div class="empty-icon">👤</div><p>Tidak ada siswa terdaftar di kelas ini.</p></div>`;
+          return;
+        }
+
+        if (sumBar) sumBar.style.display = 'flex';
+
+        area.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
+            <div style="font-weight:700;font-size:0.95rem;color:var(--text-main);">Daftar Siswa — Total ${students.length} Siswa</div>
+            <div style="display:flex;gap:0.5rem;align-items:center;">
+              <span class="badge badge-cyan">Tanggal: ${date}</span>
+              ${courseId > 0 ? `<span class="badge badge-emerald">Per Mata Pelajaran</span>` : `<span class="badge badge-muted">Presensi Umum</span>`}
+            </div>
+          </div>
+          <div class="table-responsive" style="overflow-x:auto;">
+            <table class="data-table att-input-table" style="width:100%;">
+              <thead>
+                <tr>
+                  <th style="width:40px;text-align:center;">#</th>
+                  <th>Nama Siswa</th>
+                  <th>NIS / Username</th>
+                  <th style="text-align:center;min-width:240px;">Status Kehadiran</th>
+                  <th style="text-align:center;width:90px;">Terlambat</th>
+                  <th style="min-width:180px;">Catatan / Keterangan</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${students.map((s, i) => {
+                  const sid = s.student_id || s.id;
+                  const cur = s.status || 'hadir';
+                  return `
+                    <tr id="att-row-${sid}">
+                      <td style="color:var(--text-muted);font-weight:700;text-align:center;">${i + 1}</td>
+                      <td style="font-weight:700;color:var(--text-main);">${this.escHtml(s.name)}</td>
+                      <td style="color:var(--text-muted);font-size:0.82rem;" class="font-mono">${this.escHtml(s.nip_nis || s.username || '–')}</td>
+                      <td style="text-align:center;">
+                        <input type="hidden" id="att-status-${sid}" value="${cur}">
+                        <div class="att-pill-group">
+                          <button type="button" class="att-btn-pill ${cur === 'hadir' ? 'active-hadir' : ''}" onclick="App.setStudentAttStatus(${sid},'hadir')">Hadir</button>
+                          <button type="button" class="att-btn-pill ${cur === 'izin'  ? 'active-izin'  : ''}" onclick="App.setStudentAttStatus(${sid},'izin')">Izin</button>
+                          <button type="button" class="att-btn-pill ${cur === 'sakit' ? 'active-sakit' : ''}" onclick="App.setStudentAttStatus(${sid},'sakit')">Sakit</button>
+                          <button type="button" class="att-btn-pill ${cur === 'alpa'  ? 'active-alpa'  : ''}" onclick="App.setStudentAttStatus(${sid},'alpa')">Alpa</button>
+                        </div>
+                      </td>
+                      <td style="text-align:center;">
+                        <input type="checkbox" id="att-late-${sid}" ${s.is_late ? 'checked' : ''} onchange="App.updateAttSummaryCounts()" style="width:18px;height:18px;cursor:pointer;">
+                      </td>
+                      <td>
+                        <input type="text" class="form-control" id="att-notes-${sid}" value="${this.escHtml(s.notes || '')}" placeholder="Keterangan opsional" style="font-size:0.82rem;padding:0.35rem 0.6rem;">
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+        this._attStudents = students.map(s => s.student_id || s.id);
+        this.updateAttSummaryCounts();
+      })
+      .catch(() => {
+        if (area) area.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Gagal memuat data presensi.</p></div>`;
+      });
+  },
+
+  setStudentAttStatus(sid, status) {
+    const input = document.getElementById(`att-status-${sid}`);
+    if (input) input.value = status;
+
+    const row = document.getElementById(`att-row-${sid}`);
+    if (row) {
+      const btns = row.querySelectorAll('.att-btn-pill');
+      btns.forEach(b => {
+        b.className = 'att-btn-pill';
+        const txt = b.textContent.trim().toLowerCase();
+        if (txt === status) {
+          b.classList.add(`active-${status}`);
+        }
+      });
+    }
+
+    this.updateAttSummaryCounts();
+  },
+
+  updateAttSummaryCounts() {
+    if (!this._attStudents || !this._attStudents.length) return;
+    let counts = { hadir: 0, izin: 0, sakit: 0, alpa: 0, late: 0 };
+
+    this._attStudents.forEach(sid => {
+      const st = document.getElementById(`att-status-${sid}`)?.value || 'hadir';
+      const isLate = document.getElementById(`att-late-${sid}`)?.checked;
+      if (counts[st] !== undefined) counts[st]++;
+      if (isLate) counts.late++;
+    });
+
+    const setT = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    };
+
+    setT('att-cnt-total', this._attStudents.length);
+    setT('att-cnt-hadir', counts.hadir);
+    setT('att-cnt-izin', counts.izin);
+    setT('att-cnt-sakit', counts.sakit);
+    setT('att-cnt-alpa', counts.alpa);
+    setT('att-cnt-late', counts.late);
+  },
+
+  markAllPresent() {
+    const classId  = parseInt(document.getElementById('att-class')?.value || this._attState?.classId || 0, 10);
+    const courseId = parseInt(document.getElementById('att-course')?.value || this._attState?.courseId || 0, 10);
+    const date     = document.getElementById('att-date')?.value || this._attState?.date || new Date().toISOString().split('T')[0];
+
+    if (!classId || classId === 0) {
+      alert('Pilih kelas terlebih dahulu.');
+      return;
+    }
+
+    // Instantly update UI pills if student list is rendered
+    if (this._attStudents && this._attStudents.length) {
+      this._attStudents.forEach(sid => this.setStudentAttStatus(sid, 'hadir'));
+    }
+
+    fetch('api/attendance.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ class_id: classId, course_id: courseId || null, date, mark_all_present: true })
+    })
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) {
+          this.loadAttList();
+          this._toast(`✅ ${res.message || res.marked + ' siswa ditandai hadir.'}`);
+        } else {
+          alert(res.message || 'Gagal menandai hadir.');
+        }
+      })
+      .catch(() => alert('Terjadi kesalahan koneksi saat menandai hadir.'));
+  },
+
+  saveAttBulk() {
+    const classId  = parseInt(document.getElementById('att-class')?.value || this._attState?.classId || 0, 10);
+    const courseId = parseInt(document.getElementById('att-course')?.value || this._attState?.courseId || 0, 10);
+    const date     = document.getElementById('att-date')?.value || this._attState?.date || new Date().toISOString().split('T')[0];
+
+    if (!classId || classId === 0) {
+      alert('Pilih kelas terlebih dahulu.');
+      return;
+    }
+
+    if (!this._attStudents || !this._attStudents.length) {
+      alert('Belum ada siswa yang dimuat untuk disimpan.');
+      return;
+    }
+
+    const records = this._attStudents.map(sid => ({
+      student_id: sid,
+      status:  document.getElementById(`att-status-${sid}`)?.value || 'hadir',
+      is_late: document.getElementById(`att-late-${sid}`)?.checked ? 1 : 0,
+      notes:   document.getElementById(`att-notes-${sid}`)?.value || ''
+    }));
+
+    fetch('api/attendance.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ class_id: classId, course_id: courseId || null, date, records })
+    })
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) {
+          this._toast(`✅ ${res.message || 'Presensi berhasil disimpan.'}`);
+          this.loadAttList();
+        } else {
+          alert(res.message || 'Gagal menyimpan presensi.');
+        }
+      })
+      .catch(() => alert('Terjadi kesalahan koneksi saat menyimpan presensi.'));
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     ADMIN: RESET EXAM ATTEMPT
+  ──────────────────────────────────────────────────────────────────────────── */
+  adminResetExam(userId, quizId, studentName) {
+    if (!confirm(`Reset ujian untuk ${studentName}? Semua jawaban akan dihapus dan siswa dapat mengerjakan ulang.`)) return;
+    fetch(`api/quizzes.php?action=reset_attempt&user_id=${userId}&quiz_id=${quizId}`)
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) this._toast(`✅ Ujian ${studentName} berhasil direset.`);
+        else alert(res.message || 'Gagal reset.');
+      });
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     TOAST NOTIFICATION
+  ──────────────────────────────────────────────────────────────────────────── */
+  _toast(msg, type = 'success') {
+    const existing = document.getElementById('app-toast');
+    if (existing) existing.remove();
+    const t = document.createElement('div');
+    t.id = 'app-toast';
+    t.style.cssText = `position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;padding:0.85rem 1.4rem;
+      background:${type === 'success' ? 'var(--emerald)' : 'var(--danger)'};
+      color:#fff;border-radius:var(--r-lg);font-size:0.88rem;font-weight:600;
+      box-shadow:0 6px 24px rgba(0,0,0,0.25);animation:fadeInUp 0.3s ease;`;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3500);
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────────
+     UTILITIES
+  ──────────────────────────────────────────────────────────────────────────── */
+  escHtml(str) {
+    if (!str && str !== 0) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  },
+};
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   BOOT
+══════════════════════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => App.init());
