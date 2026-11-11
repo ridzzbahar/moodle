@@ -114,8 +114,17 @@ const App = {
     this.theme = t;
     document.documentElement.setAttribute('data-theme', t);
     localStorage.setItem('smkn_theme', t);
+    const iconSpan = document.getElementById('theme-icon');
+    if (iconSpan) {
+      iconSpan.innerHTML = t === 'dark' 
+        ? '<i class="fa-solid fa-sun" style="color:#f59e0b;font-size:1.05rem;"></i>' 
+        : '<i class="fa-solid fa-moon" style="color:#6366f1;font-size:1.05rem;"></i>';
+    }
     const btn = document.getElementById('theme-btn');
-    if (btn) btn.querySelector('#theme-icon').textContent = t === 'dark' ? '🌙' : '☀️';
+    if (btn) {
+      btn.title = t === 'dark' ? 'Ganti ke Mode Terang' : 'Ganti ke Mode Gelap';
+      btn.setAttribute('aria-label', btn.title);
+    }
     // Update chart colors if charts exist
     if (this._chartTrend) this._applyChartTheme(this._chartTrend);
     if (this._chartDonut) this._applyChartTheme(this._chartDonut);
@@ -183,9 +192,6 @@ const App = {
     document.getElementById('app-layout').classList.add('login-mode');
     const sidebar = document.getElementById('main-sidebar');
     if (sidebar) sidebar.style.display = 'none';
-
-    // Generate captcha
-    const captchaVal = this._genCaptcha();
 
     document.getElementById('main-content').innerHTML = `
       <!-- ══ MOBILE THIN BANNER (shown on < 1024px) ══ -->
@@ -271,7 +277,7 @@ const App = {
               <span class="login-welcome-text">Silakan Masuk ke Akun Anda</span>
               <span class="login-tagline">E-Learning &amp; CBT Online · Portal Akademik Terpadu</span>
               <br>
-              <span class="ssl-badge">🔒 Secure Connection SSL/TLS</span>
+              <span class="ssl-badge"><i class="fa-solid fa-lock"></i> Secure Connection SSL/TLS</span>
             </div>
 
             <!-- Error Banner -->
@@ -285,15 +291,15 @@ const App = {
                 <label class="form-label">Masuk Sebagai</label>
                 <div class="role-grid">
                   <button type="button" class="role-btn active" id="role-siswa" onclick="App.setRole('siswa')">
-                    <span class="role-icon">🎓</span>
+                    <span class="role-icon"><i class="fa-solid fa-graduation-cap"></i></span>
                     <span>Siswa</span>
                   </button>
                   <button type="button" class="role-btn" id="role-guru" onclick="App.setRole('guru')">
-                    <span class="role-icon">👨‍🏫</span>
+                    <span class="role-icon"><i class="fa-solid fa-chalkboard-user"></i></span>
                     <span>Guru</span>
                   </button>
                   <button type="button" class="role-btn" id="role-admin" onclick="App.setRole('admin')">
-                    <span class="role-icon">🛡️</span>
+                    <span class="role-icon"><i class="fa-solid fa-shield-halved"></i></span>
                     <span>Admin</span>
                   </button>
                 </div>
@@ -303,7 +309,7 @@ const App = {
               <div class="form-group">
                 <label class="form-label" for="login-user" id="login-user-label">NISN / Username Siswa</label>
                 <div class="input-with-icon">
-                  <span class="input-icon">👤</span>
+                  <span class="input-icon"><i class="fa-solid fa-user"></i></span>
                   <input type="text" id="login-user" class="form-control" placeholder="Masukkan NISN atau username" required autocomplete="username">
                 </div>
               </div>
@@ -312,10 +318,10 @@ const App = {
               <div class="form-group">
                 <label class="form-label" for="login-pass">Password</label>
                 <div class="input-with-icon">
-                  <span class="input-icon">🔒</span>
+                  <span class="input-icon"><i class="fa-solid fa-lock"></i></span>
                   <input type="password" id="login-pass" class="form-control with-toggle" placeholder="Masukkan password" required autocomplete="current-password">
                   <button type="button" class="eye-toggle" id="eye-toggle-btn" onclick="App.togglePasswordVisibility()" title="Lihat/Sembunyikan Password">
-                    <span id="eye-icon">👁️</span>
+                    <span id="eye-icon"><i class="fa-solid fa-eye"></i></span>
                   </button>
                 </div>
               </div>
@@ -331,29 +337,24 @@ const App = {
                 </a>
               </div>
 
-              <!-- Captcha -->
-              <div class="form-group">
-                <label class="form-label">Verifikasi Keamanan <span style="font-weight:400;color:var(--text-muted)">(klik untuk ganti)</span></label>
-                <div class="captcha-row">
-                  <div class="captcha-box" id="captcha-box" onclick="App.refreshCaptcha()" title="Klik untuk ganti kode">${captchaVal}</div>
-                  <input type="text" id="captcha-input" class="form-control captcha-input" placeholder="Ketik kode di atas" required autocomplete="off" maxlength="6">
-                </div>
-              </div>
-
               <!-- Login Button -->
               <button type="submit" class="btn-login" id="login-btn">
-                🔐 Masuk / Login
+                <i class="fa-solid fa-right-to-bracket"></i> Masuk / Login
               </button>
             </form>
 
             <!-- Demo Quick Login -->
             <div class="demo-login-section">
-              <div class="demo-label">— Akses Demo Cepat (Testing) —</div>
-              <div class="demo-btns">
-                <button class="demo-btn" onclick="App.quickLogin('admin','password123')">🛡️ Admin</button>
-                <button class="demo-btn" onclick="App.quickLogin('guru1','password123')">👨‍🏫 Bpk. Andi (Guru)</button>
-                <button class="demo-btn" onclick="App.quickLogin('siswa1','password123')">🎓 Ahmad (Siswa)</button>
-                <button class="demo-btn" onclick="App.quickLogin('siswa2','password123')">🎓 Bunga (Siswa)</button>
+              <div class="demo-label">— Akun Demo Tester (Akses Kelas & Jurusan) —</div>
+              <div class="demo-btns" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.4rem;">
+                <button type="button" class="demo-btn" onclick="App.quickLogin('admin','password123')"><i class="fa-solid fa-shield-halved"></i> Admin</button>
+                <button type="button" class="demo-btn" onclick="App.quickLogin('guru1','password123')"><i class="fa-solid fa-chalkboard-user"></i> Guru SIJA</button>
+                <button type="button" class="demo-btn" onclick="App.quickLogin('guru_rpl','password123')"><i class="fa-solid fa-chalkboard-user"></i> Guru RPL</button>
+                <button type="button" class="demo-btn" onclick="App.quickLogin('siswa1','password123')"><i class="fa-solid fa-graduation-cap"></i> Siswa SIJA 12</button>
+                <button type="button" class="demo-btn" onclick="App.quickLogin('siswa_rpl12','password123')"><i class="fa-solid fa-laptop-code"></i> Siswa RPL 12</button>
+                <button type="button" class="demo-btn" onclick="App.quickLogin('siswa_rpl10','password123')"><i class="fa-solid fa-code"></i> Siswa RPL 10</button>
+                <button type="button" class="demo-btn" onclick="App.quickLogin('siswa_tkj12','password123')"><i class="fa-solid fa-network-wired"></i> Siswa TKJ 12</button>
+                <button type="button" class="demo-btn" onclick="App.quickLogin('siswa_dkv12','password123')"><i class="fa-solid fa-palette"></i> Siswa DKV 12</button>
               </div>
             </div>
 
@@ -369,8 +370,6 @@ const App = {
       </div><!-- /.login-split-wrapper -->
     `;
 
-    // Store captcha value
-    this._captcha = captchaVal;
   },
 
   togglePasswordVisibility() {
@@ -379,10 +378,10 @@ const App = {
     if (!passInput) return;
     if (passInput.type === 'password') {
       passInput.type = 'text';
-      if (eyeIcon) eyeIcon.textContent = '🙈';
+      if (eyeIcon) eyeIcon.innerHTML = '<i class="fa-solid fa-eye-slash"></i>';
     } else {
       passInput.type = 'password';
-      if (eyeIcon) eyeIcon.textContent = '👁️';
+      if (eyeIcon) eyeIcon.innerHTML = '<i class="fa-solid fa-eye"></i>';
     }
   },
 
@@ -403,24 +402,7 @@ const App = {
 
 
 
-  _captcha: '',
   _selectedRole: 'siswa',
-
-  _genCaptcha() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let c = '';
-    for (let i = 0; i < 5; i++) c += chars[Math.floor(Math.random() * chars.length)];
-    return c;
-  },
-
-  refreshCaptcha() {
-    const val = this._genCaptcha();
-    this._captcha = val;
-    const el = document.getElementById('captcha-box');
-    if (el) el.textContent = val;
-    const inp = document.getElementById('captcha-input');
-    if (inp) inp.value = '';
-  },
 
   setRole(role) {
     this._selectedRole = role;
@@ -437,12 +419,6 @@ const App = {
 
   handleLogin(e) {
     e.preventDefault();
-    const captchaInput = document.getElementById('captcha-input')?.value?.trim().toUpperCase();
-    if (captchaInput !== this._captcha) {
-      this._showLoginError('Kode verifikasi salah. Silakan coba lagi.');
-      this.refreshCaptcha();
-      return;
-    }
 
     const username = document.getElementById('login-user').value.trim();
     const password = document.getElementById('login-pass').value;
@@ -471,13 +447,12 @@ const App = {
           this.renderAppLayout('dashboard');
         } else {
           this._showLoginError(data.message || 'Login gagal. Periksa kembali data Anda.');
-          this.refreshCaptcha();
-          if (btn) { btn.disabled = false; btn.textContent = '🔐 Masuk ke Portal Akademik'; }
+          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Masuk ke Portal Akademik'; }
         }
       })
       .catch(() => {
         this._showLoginError('Koneksi bermasalah. Pastikan server berjalan.');
-        if (btn) { btn.disabled = false; btn.textContent = '🔐 Masuk ke Portal Akademik'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Masuk ke Portal Akademik'; }
       });
   },
 
@@ -537,7 +512,7 @@ const App = {
     ua.innerHTML = `
       <div class="nav-avatar" title="Klik untuk edit profil" style="cursor:pointer;" onclick="App.openProfileModal()">${initials}</div>
       <div class="nav-user-info" style="cursor:pointer;" onclick="App.openProfileModal()" title="Klik untuk edit profil">
-        <span class="nav-user-name">${this.escHtml(u.name)} ⚙️</span>
+        <span class="nav-user-name">${this.escHtml(u.name)} <i class="fa-solid fa-gear" style="font-size:0.8rem;opacity:0.75;"></i></span>
         <span class="nav-user-role">${roleLabel[u.role] || u.role}</span>
       </div>
       <button class="nav-logout-btn" onclick="App.logout()">${this.t('logout')}</button>
@@ -622,7 +597,7 @@ const App = {
         this.currentUser.name = body.name;
         this.renderNavbarUser();
         this.closeModal();
-        this._toast('✅ Profil berhasil diperbarui.');
+        this._toast('Profil berhasil diperbarui.');
       } else alert(res.message);
     });
   },
@@ -717,40 +692,40 @@ const App = {
         const s = data.stats || {};
         const u = this.currentUser;
         const isStaff = u.role !== 'siswa';
-        const roleEmoji = { admin: '🛡️', guru: '👨‍🏫', siswa: '🎓' };
+        const roleEmoji = { admin: '<i class="fa-solid fa-shield-halved"></i>', guru: '<i class="fa-solid fa-chalkboard-user"></i>', siswa: '<i class="fa-solid fa-graduation-cap"></i>' };
 
         const recentQuizzes = (data.recent_quizzes || []).slice(0, 3);
         const quizHtml = recentQuizzes.length ? recentQuizzes.map(q => `
           <div style="display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0;border-bottom:1px solid var(--border-subtle);">
-            <div style="width:36px;height:36px;border-radius:var(--r-md);background:var(--cyan-dim);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">📝</div>
+            <div style="width:36px;height:36px;border-radius:var(--r-md);background:var(--cyan-dim);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;"><i class="fa-solid fa-file-pen"></i></div>
             <div style="flex:1;min-width:0;">
               <div style="font-weight:600;font-size:0.88rem;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escHtml(q.title)}</div>
               <div style="font-size:0.75rem;color:var(--text-muted);">Oleh: ${this.escHtml(q.teacher_name || '—')} · ${q.duration_minutes} menit</div>
             </div>
             <span class="badge badge-cyan">${q.status}</span>
           </div>
-        `).join('') : `<div class="empty-state"><div class="empty-icon">📝</div><p>Belum ada ujian terbaru.</p></div>`;
+        `).join('') : `<div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-file-pen"></i></div><p>Belum ada ujian terbaru.</p></div>`;
 
         // Student attendance summary
         const ss = data.student_stats;
         const studentAttHtml = (u.role === 'siswa' && ss) ? `
           <div class="card mb-3">
-            <div class="card-title">📋 Rekap Presensi Saya</div>
+            <div class="card-title"><i class="fa-solid fa-clipboard-check"></i> Rekap Presensi Saya</div>
             <div class="stats-grid" style="margin-bottom:0;">
               <div class="stat-card">
-                <div class="stat-icon-box" style="background:var(--emerald-dim);font-size:1.3rem;">✅</div>
+                <div class="stat-icon-box" style="background:var(--emerald-dim);font-size:1.3rem;"><i class="fa-solid fa-circle-check" style="color:var(--emerald);"></i></div>
                 <div><div class="stat-value text-green">${ss.attendance_summary?.hadir || 0}</div><div class="stat-label">Hadir</div></div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon-box" style="background:var(--blue-dim);font-size:1.3rem;">📄</div>
+                <div class="stat-icon-box" style="background:var(--blue-dim);font-size:1.3rem;"><i class="fa-solid fa-file-lines" style="color:#3b82f6;"></i></div>
                 <div><div class="stat-value" style="color:var(--blue);">${ss.attendance_summary?.izin || 0}</div><div class="stat-label">Izin</div></div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon-box" style="background:var(--amber-dim);font-size:1.3rem;">🤒</div>
+                <div class="stat-icon-box" style="background:var(--amber-dim);font-size:1.3rem;"><i class="fa-solid fa-hospital-user" style="color:var(--amber);"></i></div>
                 <div><div class="stat-value text-amber">${ss.attendance_summary?.sakit || 0}</div><div class="stat-label">Sakit</div></div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon-box" style="background:var(--danger-dim);font-size:1.3rem;">❌</div>
+                <div class="stat-icon-box" style="background:var(--danger-dim);font-size:1.3rem;"><i class="fa-solid fa-circle-xmark" style="color:var(--danger);"></i></div>
                 <div><div class="stat-value text-danger">${ss.attendance_summary?.alpa || 0}</div><div class="stat-label">Alpa</div></div>
               </div>
             </div>
@@ -762,7 +737,7 @@ const App = {
           <div class="hero-banner">
             <div>
               <div class="hero-badge">${roleEmoji[u.role]} Tahun Ajaran 2026/2027 · SMKN 1 CIBINONG</div>
-              <div class="hero-title">Selamat Datang, <span>${this.escHtml(u.name.split(' ')[0])}!</span> 👋</div>
+              <div class="hero-title">Selamat Datang, <span>${this.escHtml(u.name.split(' ')[0])}!</span></div>
               <div class="hero-sub">
                 Portal E-Learning & CBT Online SMKN 1 CIBINONG. Akses materi, ujian, presensi, dan nilai akademik dalam satu platform terintegrasi.
               </div>
@@ -776,36 +751,36 @@ const App = {
           <div class="stats-grid">
             ${isStaff ? `
               <div class="stat-card">
-                <div class="stat-icon-box">📚</div>
+                <div class="stat-icon-box"><i class="fa-solid fa-book"></i></div>
                 <div><div class="stat-value">${s.total_courses || 0}</div><div class="stat-label">Mata Pelajaran</div></div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon-box" style="background:rgba(99,102,241,0.15);font-size:1.3rem;">🏛️</div>
+                <div class="stat-icon-box" style="background:rgba(99,102,241,0.15);font-size:1.3rem;"><i class="fa-solid fa-building-columns" style="color:#6366f1;"></i></div>
                 <div><div class="stat-value">${s.total_classes || 0}</div><div class="stat-label">Kelas / Rombel</div></div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon-box" style="background:var(--emerald-dim);font-size:1.3rem;">🎓</div>
+                <div class="stat-icon-box" style="background:var(--emerald-dim);font-size:1.3rem;"><i class="fa-solid fa-graduation-cap" style="color:var(--emerald);"></i></div>
                 <div><div class="stat-value text-green">${s.total_students || 0}</div><div class="stat-label">Siswa Aktif</div></div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon-box" style="background:var(--amber-dim);font-size:1.3rem;">📝</div>
+                <div class="stat-icon-box" style="background:var(--amber-dim);font-size:1.3rem;"><i class="fa-solid fa-file-pen" style="color:var(--amber);"></i></div>
                 <div><div class="stat-value text-amber">${s.total_quizzes || 0}</div><div class="stat-label">Ujian CBT Aktif</div></div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon-box" style="background:var(--cyan-dim);font-size:1.3rem;">✅</div>
+                <div class="stat-icon-box" style="background:var(--cyan-dim);font-size:1.3rem;"><i class="fa-solid fa-circle-check" style="color:var(--cyan);"></i></div>
                 <div><div class="stat-value text-cyan">${s.today_attendance || 0}</div><div class="stat-label">Hadir Hari Ini</div></div>
               </div>
             ` : `
               <div class="stat-card">
-                <div class="stat-icon-box">📝</div>
+                <div class="stat-icon-box"><i class="fa-solid fa-file-pen"></i></div>
                 <div><div class="stat-value">${ss?.completed_exams || 0}</div><div class="stat-label">Ujian Selesai</div></div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon-box" style="background:var(--emerald-dim);">✅</div>
+                <div class="stat-icon-box" style="background:var(--emerald-dim);"><i class="fa-solid fa-circle-check" style="color:var(--emerald);"></i></div>
                 <div><div class="stat-value text-green">${ss?.attendance_summary?.hadir || 0}</div><div class="stat-label">Total Hadir</div></div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon-box" style="background:var(--danger-dim);">❌</div>
+                <div class="stat-icon-box" style="background:var(--danger-dim);"><i class="fa-solid fa-circle-xmark" style="color:var(--danger);"></i></div>
                 <div><div class="stat-value text-danger">${ss?.attendance_summary?.alpa || 0}</div><div class="stat-label">Alpa</div></div>
               </div>
             `}
@@ -816,7 +791,7 @@ const App = {
           <!-- 2-col: Announcements + Quick Links -->
           <div class="grid-2col">
             <div class="card">
-              <div class="card-title">📢 ${this.t('announcements')}
+              <div class="card-title"><i class="fa-solid fa-bullhorn"></i> ${this.t('announcements')}
                 ${isStaff ? `<button class="btn btn-outline" style="margin-left:auto;font-size:0.78rem;padding:0.3rem 0.7rem;" onclick="App.renderAppLayout('announcements')">Kelola ›</button>` : ''}
               </div>
               <div class="glow-line"></div>
@@ -824,15 +799,15 @@ const App = {
             </div>
 
             <div class="card">
-              <div class="card-title">⚡ Menu Pintas</div>
+              <div class="card-title"><i class="fa-solid fa-bolt"></i> Menu Pintas</div>
               <div style="display:flex;flex-direction:column;gap:0.6rem;">
-                <button class="btn btn-primary btn-full" onclick="App.renderAppLayout('cbt')">📝 Buka Menu Ujian CBT</button>
-                <button class="btn btn-outline btn-full"  onclick="App.renderAppLayout('rekap')">📊 Rekap Absensi Siswa</button>
-                <button class="btn btn-outline btn-full" onclick="App.renderAppLayout('grades')">🏆 Lihat Daftar Nilai</button>
-                ${isStaff ? `<button class="btn btn-primary btn-full" onclick="App.renderAppLayout('attendance')">📋 Input Presensi Hari Ini</button>` : ''}
+                <button class="btn btn-primary btn-full" onclick="App.renderAppLayout('cbt')"><i class="fa-solid fa-file-pen"></i> Buka Menu Ujian CBT</button>
+                <button class="btn btn-outline btn-full"  onclick="App.renderAppLayout('rekap')"><i class="fa-solid fa-chart-simple"></i> Rekap Absensi Siswa</button>
+                <button class="btn btn-outline btn-full" onclick="App.renderAppLayout('grades')"><i class="fa-solid fa-trophy"></i> Lihat Daftar Nilai</button>
+                ${isStaff ? `<button class="btn btn-primary btn-full" onclick="App.renderAppLayout('attendance')"><i class="fa-solid fa-clipboard-user"></i> Input Presensi Hari Ini</button>` : ''}
               </div>
               <div class="glow-line" style="margin:1.25rem 0 1rem;"></div>
-              <div class="card-title" style="font-size:0.9rem;">📝 Ujian Terbaru</div>
+              <div class="card-title" style="font-size:0.9rem;"><i class="fa-solid fa-file-pen"></i> Ujian Terbaru</div>
               ${quizHtml}
             </div>
           </div>
@@ -845,11 +820,11 @@ const App = {
             const el = document.getElementById('dash-announcements');
             if (!el) return;
             const items = ann.data || ann.announcements || [];
-            if (!items.length) { el.innerHTML = `<div class="empty-state" style="padding:1rem 0;"><div class="empty-icon">📢</div><p>Belum ada pengumuman.</p></div>`; return; }
+            if (!items.length) { el.innerHTML = `<div class="empty-state" style="padding:1rem 0;"><div class="empty-icon"><i class="fa-solid fa-bullhorn"></i></div><p>Belum ada pengumuman.</p></div>`; return; }
             el.innerHTML = items.slice(0,4).map(a => `
               <div style="background:var(--bg-card2);border:1px solid var(--border-subtle);border-radius:var(--r-md);padding:1rem;margin-bottom:0.75rem;">
                 <div class="flex-between mb-1">
-                  <span style="font-weight:700;color:var(--accent);font-size:0.88rem;">${a.is_pinned ? '📌 ' : ''}${this.escHtml(a.title)}</span>
+                  <span style="font-weight:700;color:var(--accent);font-size:0.88rem;">${a.is_pinned ? '<i class="fa-solid fa-thumbtack"></i> ' : ''}${this.escHtml(a.title)}</span>
                   <span class="badge badge-${a.target === 'siswa' ? 'cyan' : a.target === 'guru' ? 'amber' : 'blue'}" style="font-size:0.65rem;">${a.target === 'all' ? 'Semua' : a.target}</span>
                 </div>
                 <p style="font-size:0.82rem;color:var(--text-sub);line-height:1.55;margin:0;">${this.escHtml(a.content).substring(0,180)}${a.content.length > 180 ? '…' : ''}</p>
@@ -881,7 +856,7 @@ const App = {
           <div class="quiz-card">
             <div>
               <div class="flex-between mb-2">
-                <span style="font-size:2rem;">${c.icon || '📚'}</span>
+                <span style="font-size:2rem;"><i class="fa-solid fa-book-bookmark" style="color:var(--cyan);"></i></span>
                 <div style="display:flex;gap:0.35rem;flex-wrap:wrap;">
                   <span class="badge badge-cyan">${this.escHtml(c.course_code)}</span>
                   ${c.major ? `<span class="badge badge-amber">${this.escHtml(c.major)}</span>` : ''}
@@ -889,37 +864,37 @@ const App = {
               </div>
               <div class="quiz-card-title">${this.escHtml(c.course_name)}</div>
               <div class="quiz-card-desc">
-                🏛️ Kelas: <b>${this.escHtml(c.class_name || 'Semua Kelas')}</b><br>
-                👨‍🏫 Pengampu: <b>${this.escHtml(c.teacher_name || 'Belum ditugaskan')}</b><br>
-                📁 <b>${c.material_count || 0}</b> Materi &bull; 📝 <b>${c.assignment_count || 0}</b> Tugas &bull; 🎯 <b>${c.quiz_count || 0}</b> Ujian
+                <i class="fa-solid fa-building-columns"></i> Kelas: <b>${this.escHtml(c.class_name || 'Semua Kelas')}</b><br>
+                <i class="fa-solid fa-chalkboard-user"></i> Pengampu: <b>${this.escHtml(c.teacher_name || 'Belum ditugaskan')}</b><br>
+                <i class="fa-solid fa-folder"></i> <b>${c.material_count || 0}</b> Materi &bull; <i class="fa-solid fa-file-pen"></i> <b>${c.assignment_count || 0}</b> Tugas &bull; <i class="fa-solid fa-bullseye"></i> <b>${c.quiz_count || 0}</b> Ujian
               </div>
             </div>
             <div class="quiz-card-actions">
-              <button class="btn btn-primary btn-full" onclick="App.openCourseDetail(${c.id})">📖 Masuk Kelas & Materi</button>
+              <button class="btn btn-primary btn-full" onclick="App.openCourseDetail(${c.id})"><i class="fa-solid fa-book-open"></i> Masuk Kelas & Materi</button>
               <div class="flex-gap-1 mt-1">
-                <button class="btn btn-outline" style="flex:1;" onclick="App.renderAppLayout('cbt')">📝 CBT (${c.quiz_count || 0})</button>
+                <button class="btn btn-outline" style="flex:1;" onclick="App.renderAppLayout('cbt')"><i class="fa-solid fa-file-pen"></i> CBT (${c.quiz_count || 0})</button>
                 ${isStaff ? `
-                  <button class="btn btn-outline btn-sm" onclick="App.openEditCourseModal(${c.id})" title="Edit Mapel">✏️ Edit</button>
-                  <button class="btn btn-danger btn-sm" onclick="App.deleteCourse(${c.id})" title="Hapus Mapel">🗑️</button>
+                  <button class="btn btn-outline btn-sm" onclick="App.openEditCourseModal(${c.id})" title="Edit Mapel"><i class="fa-solid fa-pen"></i> Edit</button>
+                  <button class="btn btn-danger btn-sm" onclick="App.deleteCourse(${c.id})" title="Hapus Mapel"><i class="fa-solid fa-trash"></i></button>
                 ` : ''}
               </div>
             </div>
           </div>
-        `).join('') : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">📚</div><p>Belum ada mata pelajaran terdaftar untuk jurusan ini.</p></div>`;
+        `).join('') : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon"><i class="fa-solid fa-book"></i></div><p>Belum ada mata pelajaran terdaftar untuk jurusan ini.</p></div>`;
 
         this.setContent(`
           <div class="flex-between mb-3">
             <div>
-              <div class="section-title">📚 Mata Pelajaran</div>
+              <div class="section-title"><i class="fa-solid fa-book"></i> Mata Pelajaran</div>
               <div class="section-sub">Daftar mata pelajaran yang tersedia di SMKN 1 CIBINONG.</div>
             </div>
-            ${isStaff ? `<button class="btn btn-primary" onclick="App.openAddCourseModal()">➕ Tambah Mapel</button>` : ''}
+            ${isStaff ? `<button class="btn btn-primary" onclick="App.openAddCourseModal()"><i class="fa-solid fa-plus"></i> Tambah Mapel</button>` : ''}
           </div>
           <div class="filter-bar mb-3" style="display:flex;gap:0.5rem;flex-wrap:wrap;">
             ${['all', 'RPL', 'SIJA', 'TKJ', 'Umum'].map(m => `
               <button class="btn btn-sm ${major === m ? 'btn-primary' : 'btn-secondary'}" 
                 onclick="App.loadCourses('${m}')">
-                ${m === 'all' ? '🌐 Semua Jurusan' : '🎯 Jurusan ' + m}
+                ${m === 'all' ? '<i class="fa-solid fa-globe"></i> Semua Jurusan' : '<i class="fa-solid fa-bullseye"></i> Jurusan ' + m}
               </button>
             `).join('')}
           </div>
@@ -956,7 +931,7 @@ const App = {
             </select>
           </div>
           <div class="form-group mb-2"><label class="form-label">Kelas / Rombel Target</label><select id="c-class" class="form-control">${classOpts}</select></div>
-          <div class="form-group mb-3"><label class="form-label">Ikon (Emoji)</label><input type="text" id="c-icon" class="form-control" value="📚" maxlength="8"></div>
+          <div class="form-group mb-3"><label class="form-label">Kode Ikon FontAwesome</label><input type="text" id="c-icon" class="form-control" value="fa-book" maxlength="30" placeholder="contoh: fa-book, fa-laptop-code"></div>
           <div class="flex-end flex-gap-1"><button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Simpan Mapel</button></div>
         </form>
       `);
@@ -1033,11 +1008,11 @@ const App = {
           </div>
           <div class="form-group mb-3">
             <label class="form-label">Ikon (Emoji)</label>
-            <input type="text" id="ec-icon" class="form-control" value="${this.escHtml(course.icon || '📚')}" maxlength="8">
+            <input type="text" id="ec-icon" class="form-control" value="${this.escHtml(course.icon || 'fa-book')}" maxlength="30">
           </div>
           <div class="flex-end flex-gap-1">
             <button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button>
-            <button type="submit" class="btn btn-primary">💾 Simpan Perubahan</button>
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan</button>
           </div>
         </form>
       `);
@@ -1063,7 +1038,7 @@ const App = {
     }).then(r => r.json()).then(d => {
       if (d.success) {
         this.closeModal();
-        this._toast('✅ Mata pelajaran berhasil diperbarui.');
+        this._toast('Mata pelajaran berhasil diperbarui.');
         this.loadCourses();
       } else alert(d.message);
     });
@@ -1088,7 +1063,7 @@ const App = {
 
         let tabNav = `
           <div class="hero-banner mb-3" style="border-left: 5px solid var(--accent);">
-            <div style="font-size:2.8rem; margin-right:1rem;">${c.icon || '📚'}</div>
+            <div style="font-size:2.8rem; margin-right:1rem; color:var(--cyan);"><i class="fa-solid ${c.icon && c.icon.startsWith('fa-') ? c.icon : 'fa-book'}"></i></div>
             <div style="flex:1;">
               <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.25rem;">
                 <span class="badge badge-cyan">${this.escHtml(c.course_code)}</span>
@@ -1097,18 +1072,18 @@ const App = {
               </div>
               <h2 class="hero-title" style="margin:0.25rem 0;">${this.escHtml(c.course_name)}</h2>
               <div style="color:rgba(255,255,255,0.85);font-size:0.88rem;">
-                👨‍🏫 Pengampu: <b>${this.escHtml(c.teacher_name || 'Belum ditugaskan')}</b> &bull;
-                📁 ${stats.materials || 0} Materi &bull; 📝 ${stats.assignments || 0} Tugas &bull; 💬 ${stats.discussions || 0} Diskusi
+                <i class="fa-solid fa-chalkboard-user"></i> Pengampu: <b>${this.escHtml(c.teacher_name || 'Belum ditugaskan')}</b> &bull;
+                <i class="fa-solid fa-folder"></i> ${stats.materials || 0} Materi &bull; <i class="fa-solid fa-file-pen"></i> ${stats.assignments || 0} Tugas &bull; <i class="fa-solid fa-comments"></i> ${stats.discussions || 0} Diskusi
               </div>
             </div>
-            <button class="btn btn-secondary btn-sm" onclick="App.loadCourses()" style="align-self:flex-start;">⬅ Kembali</button>
+            <button class="btn btn-secondary btn-sm" onclick="App.loadCourses()" style="align-self:flex-start;"><i class="fa-solid fa-arrow-left"></i> Kembali</button>
           </div>
 
           <div class="tabs-bar mb-3" style="display:flex;gap:0.5rem;border-bottom:1px solid var(--border);padding-bottom:0.5rem;flex-wrap:wrap;">
-            <button class="btn btn-sm ${activeTab === 'materials' ? 'btn-primary' : 'btn-secondary'}" onclick="App.openCourseDetail(${courseId}, 'materials')">📁 Materi (${stats.materials || 0})</button>
-            <button class="btn btn-sm ${activeTab === 'assignments' ? 'btn-primary' : 'btn-secondary'}" onclick="App.openCourseDetail(${courseId}, 'assignments')">📝 Tugas (${stats.assignments || 0})</button>
-            <button class="btn btn-sm ${activeTab === 'discussions' ? 'btn-primary' : 'btn-secondary'}" onclick="App.openCourseDetail(${courseId}, 'discussions')">💬 Diskusi (${stats.discussions || 0})</button>
-            <button class="btn btn-sm ${activeTab === 'info' ? 'btn-primary' : 'btn-secondary'}" onclick="App.openCourseDetail(${courseId}, 'info')">ℹ️ Informasi</button>
+            <button class="btn btn-sm ${activeTab === 'materials' ? 'btn-primary' : 'btn-secondary'}" onclick="App.openCourseDetail(${courseId}, 'materials')"><i class="fa-solid fa-folder"></i> Materi (${stats.materials || 0})</button>
+            <button class="btn btn-sm ${activeTab === 'assignments' ? 'btn-primary' : 'btn-secondary'}" onclick="App.openCourseDetail(${courseId}, 'assignments')"><i class="fa-solid fa-file-pen"></i> Tugas (${stats.assignments || 0})</button>
+            <button class="btn btn-sm ${activeTab === 'discussions' ? 'btn-primary' : 'btn-secondary'}" onclick="App.openCourseDetail(${courseId}, 'discussions')"><i class="fa-solid fa-comments"></i> Diskusi (${stats.discussions || 0})</button>
+            <button class="btn btn-sm ${activeTab === 'info' ? 'btn-primary' : 'btn-secondary'}" onclick="App.openCourseDetail(${courseId}, 'info')"><i class="fa-solid fa-circle-info"></i> Informasi</button>
           </div>
 
           <div id="course-tab-container">Memuat konten tab...</div>
@@ -1127,40 +1102,91 @@ const App = {
     fetch(`api/course_detail.php?action=materials&course_id=${courseId}`)
       .then(r => r.json())
       .then(d => {
+        if (!d.success) {
+          const container = document.getElementById('course-tab-container');
+          if (container) container.innerHTML = `<div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-lock"></i></div><p>${this.escHtml(d.message || 'Akses materi dibatasi.')}</p></div>`;
+          return;
+        }
+
         const materials = d.data || [];
         const container = document.getElementById('course-tab-container');
         if (!container) return;
 
-        const typeIcon = { pdf: '📄', video: '🎥', link: '🔗', text: '📝' };
+        const typeIcon = {
+          pdf: '<i class="fa-solid fa-file-pdf" style="color:#ef4444;"></i>',
+          word: '<i class="fa-solid fa-file-word" style="color:#2563eb;"></i>',
+          doc: '<i class="fa-solid fa-file-word" style="color:#2563eb;"></i>',
+          docx: '<i class="fa-solid fa-file-word" style="color:#2563eb;"></i>',
+          pptx: '<i class="fa-solid fa-file-powerpoint" style="color:#f97316;"></i>',
+          ppt: '<i class="fa-solid fa-file-powerpoint" style="color:#f97316;"></i>',
+          excel: '<i class="fa-solid fa-file-excel" style="color:#10b981;"></i>',
+          xls: '<i class="fa-solid fa-file-excel" style="color:#10b981;"></i>',
+          xlsx: '<i class="fa-solid fa-file-excel" style="color:#10b981;"></i>',
+          video: '<i class="fa-solid fa-file-video" style="color:#8b5cf6;"></i>',
+          archive: '<i class="fa-solid fa-file-zipper" style="color:#eab308;"></i>',
+          zip: '<i class="fa-solid fa-file-zipper" style="color:#eab308;"></i>',
+          link: '<i class="fa-solid fa-link" style="color:#06b6d4;"></i>',
+          text: '<i class="fa-solid fa-file-lines" style="color:#64748b;"></i>'
+        };
 
-        const itemsHtml = materials.length ? materials.map((m, i) => `
-          <div class="card mb-2" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem;flex-wrap:wrap;">
-            <div style="display:flex;align-items:center;gap:1rem;flex:1;min-width:260px;">
-              <div style="font-size:2rem;">${typeIcon[m.type] || '📄'}</div>
-              <div>
-                <div style="font-weight:600;font-size:1rem;color:var(--text-main);">${this.escHtml(m.title)}</div>
-                <div style="font-size:0.82rem;color:var(--text-muted);margin-top:0.2rem;">
-                  Tipe: <span class="badge badge-cyan" style="text-transform:uppercase;">${m.type}</span> &bull;
-                  Diunggah oleh: <b>${this.escHtml(m.uploader || 'Guru')}</b> &bull;
-                  ${m.created_at ? new Date(m.created_at).toLocaleDateString('id-ID', {day:'numeric',month:'short',year:'numeric'}) : ''}
+        const formatSize = (bytes) => {
+          if (!bytes || bytes <= 0) return '';
+          const k = 1024;
+          const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+          const i = Math.floor(Math.log(bytes) / Math.log(k));
+          return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        };
+
+        const itemsHtml = materials.length ? materials.map((m, i) => {
+          const isFile = m.content_url && (m.content_url.startsWith('uploads/') || m.file_name);
+          const icon = typeIcon[m.type] || '<i class="fa-solid fa-file-lines"></i>';
+          const sizeStr = m.file_size ? ` &bull; <i class="fa-solid fa-hard-drive"></i> ${formatSize(m.file_size)}` : '';
+          const dispName = m.file_name ? `<div style="font-size:0.83rem;color:var(--text-sub);margin-top:0.15rem;"><i class="fa-solid fa-paperclip"></i> ${this.escHtml(m.file_name)}</div>` : '';
+
+          let actions = '';
+          if (isFile) {
+            if (m.type === 'pdf') {
+              actions += `<a href="api/course_detail.php?action=view_material&course_id=${courseId}&id=${m.id}" target="_blank" class="btn btn-secondary btn-sm" title="Lihat di tab baru"><i class="fa-solid fa-eye"></i> Lihat</a> `;
+            }
+            actions += `<a href="api/course_detail.php?action=download_material&course_id=${courseId}&id=${m.id}" class="btn btn-primary btn-sm" title="Unduh file"><i class="fa-solid fa-download"></i> Unduh</a>`;
+          } else if (m.content_url) {
+            actions += `<a href="${this.escHtml(m.content_url)}" target="_blank" class="btn btn-primary btn-sm"><i class="fa-solid fa-arrow-up-right-from-square"></i> Buka Tautan</a>`;
+          }
+
+          if (isStaff) {
+            actions += ` <button class="btn btn-danger btn-sm" onclick="App._deleteMaterial(${courseId}, ${m.id})" title="Hapus materi"><i class="fa-solid fa-trash"></i></button>`;
+          }
+
+          return `
+            <div class="card mb-2" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem;flex-wrap:wrap;">
+              <div style="display:flex;align-items:center;gap:1rem;flex:1;min-width:260px;">
+                <div style="font-size:2.2rem;line-height:1;">${icon}</div>
+                <div style="flex:1;">
+                  <div style="font-weight:600;font-size:1.02rem;color:var(--text-main);">${this.escHtml(m.title)}</div>
+                  ${dispName}
+                  <div style="font-size:0.82rem;color:var(--text-muted);margin-top:0.25rem;">
+                    Tipe: <span class="badge badge-cyan" style="text-transform:uppercase;">${m.type}</span>
+                    ${sizeStr} &bull;
+                    Diunggah oleh: <b>${this.escHtml(m.uploader || 'Guru')}</b> &bull;
+                    ${m.created_at ? new Date(m.created_at).toLocaleDateString('id-ID', {day:'numeric',month:'short',year:'numeric'}) : ''}
+                  </div>
+                  ${m.content ? `<div style="margin-top:0.5rem;font-size:0.88rem;color:var(--text-sub);line-height:1.4;">${this.escHtml(m.content)}</div>` : ''}
                 </div>
-                ${m.content ? `<div style="margin-top:0.5rem;font-size:0.88rem;color:var(--text-sub);">${this.escHtml(m.content)}</div>` : ''}
+              </div>
+              <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                ${actions}
               </div>
             </div>
-            <div style="display:flex;gap:0.5rem;">
-              ${m.content_url ? `<a href="${this.escHtml(m.content_url)}" target="_blank" class="btn btn-primary btn-sm">🔗 Buka / Unduh</a>` : ''}
-              ${isStaff ? `<button class="btn btn-danger btn-sm" onclick="App._deleteMaterial(${courseId}, ${m.id})">🗑️</button>` : ''}
-            </div>
-          </div>
-        `).join('') : `<div class="empty-state"><div class="empty-icon">📁</div><p>Belum ada materi pembelajaran yang diunggah.</p></div>`;
+          `;
+        }).join('') : `<div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-folder-open"></i></div><p>Belum ada materi pembelajaran yang diunggah.</p></div>`;
 
         container.innerHTML = `
-          <div class="flex-between mb-3">
+          <div class="flex-between mb-3" style="flex-wrap:wrap;gap:0.75rem;">
             <div>
-              <div class="section-title" style="font-size:1.1rem;">📁 Modul & Materi Pembelajaran</div>
-              <div class="section-sub">Akses materi PDF, slide presentasi, tautan video, atau referensi online.</div>
+              <div class="section-title" style="font-size:1.1rem;"><i class="fa-solid fa-folder-open"></i> Modul & Materi Pembelajaran</div>
+              <div class="section-sub">Akses materi PDF, slide presentasi (.pptx), dokumen Word (.docx), spreadsheet (.xlsx), video, atau referensi online.</div>
             </div>
-            ${isStaff ? `<button class="btn btn-primary btn-sm" onclick="App._openAddMaterialModal(${courseId})">➕ Upload Materi</button>` : ''}
+            ${isStaff ? `<button class="btn btn-primary btn-sm" onclick="App._openAddMaterialModal(${courseId})"><i class="fa-solid fa-file-arrow-up"></i> Upload Materi Baru</button>` : ''}
           </div>
           <div>${itemsHtml}</div>
         `;
@@ -1168,42 +1194,124 @@ const App = {
   },
 
   _openAddMaterialModal(courseId) {
-    this.openModal('Tambah Materi Pembelajaran Baru', `
-      <form onsubmit="App._handleAddMaterial(event, ${courseId})">
-        <div class="form-group mb-2"><label class="form-label">Judul Materi</label><input type="text" id="mat-title" class="form-control" placeholder="cth: Modul 1 - Pengenalan HTML5 & CSS3" required></div>
-        <div class="form-group mb-2"><label class="form-label">Tipe Materi</label>
-          <select id="mat-type" class="form-control" onchange="document.getElementById('mat-url-group').style.display = this.value === 'text' ? 'none' : 'block'">
-            <option value="pdf">Dokumen PDF / Slide (PDF)</option>
-            <option value="video">Video Pembelajaran (YouTube / Link Video)</option>
-            <option value="link">Tautan Web / Sumber Belajar Eksternal</option>
+    this.openModal('Upload / Tambah Materi Pembelajaran', `
+      <form onsubmit="App._handleAddMaterial(event, ${courseId})" enctype="multipart/form-data">
+        <div class="form-group mb-2">
+          <label class="form-label">Judul Materi <span style="color:var(--danger)">*</span></label>
+          <input type="text" id="mat-title" class="form-control" placeholder="cth: Modul 1 - Pemodelan Data & Normalisasi" required>
+        </div>
+
+        <div class="form-group mb-2">
+          <label class="form-label">Metode Materi</label>
+          <select id="mat-source-type" class="form-control" onchange="App._toggleMaterialSource(this.value)">
+            <option value="file">Upload File Dokumen (.pdf, .pptx, .docx, .xlsx, dll)</option>
+            <option value="url">Tautan Web / Video Eksternal (URL)</option>
             <option value="text">Catatan Teks / Rangkuman Singkat</option>
           </select>
         </div>
-        <div class="form-group mb-2" id="mat-url-group"><label class="form-label">URL / Tautan Dokumen atau Video</label><input type="url" id="mat-url" class="form-control" placeholder="https://..."></div>
-        <div class="form-group mb-3"><label class="form-label">Deskripsi / Rangkuman Singkat</label><textarea id="mat-content" class="form-control" rows="3" placeholder="Deskripsi materi atau instruksi baca..."></textarea></div>
-        <div class="flex-end flex-gap-1"><button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button><button type="submit" class="btn btn-primary">Simpan Materi</button></div>
+
+        <!-- File Upload Section -->
+        <div class="form-group mb-2" id="mat-group-file">
+          <label class="form-label">Pilih File Materi</label>
+          <input type="file" id="mat-file" class="form-control" accept=".pdf,.pptx,.ppt,.docx,.doc,.xlsx,.xls,.zip,.rar,.txt,.mp4,.png,.jpg,.jpeg">
+          <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.35rem;">
+            <i class="fa-solid fa-circle-info"></i> Format yang didukung: <b>.PDF, .PPTX, .DOCX, .XLSX, .ZIP, .MP4</b> (Maksimal 50 MB).
+          </div>
+        </div>
+
+        <!-- URL Section -->
+        <div class="form-group mb-2" id="mat-group-url" style="display:none;">
+          <label class="form-label">Jenis Tautan & URL</label>
+          <div style="display:flex;gap:0.5rem;margin-bottom:0.4rem;">
+            <select id="mat-url-type" class="form-control" style="width:140px;">
+              <option value="link">Website / Link</option>
+              <option value="video">Video YouTube</option>
+            </select>
+            <input type="url" id="mat-url" class="form-control" placeholder="https://..." style="flex:1;">
+          </div>
+        </div>
+
+        <div class="form-group mb-3">
+          <label class="form-label">Deskripsi / Catatan Tambahan (Opsional)</label>
+          <textarea id="mat-content" class="form-control" rows="3" placeholder="Instruksi belajar, poin ringkasan, atau keterangan untuk siswa..."></textarea>
+        </div>
+
+        <div class="flex-end flex-gap-1">
+          <button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-mat"><i class="fa-solid fa-cloud-arrow-up"></i> Simpan & Unggah</button>
+        </div>
       </form>
     `);
   },
 
+  _toggleMaterialSource(mode) {
+    const grpFile = document.getElementById('mat-group-file');
+    const grpUrl = document.getElementById('mat-group-url');
+    if (grpFile) grpFile.style.display = (mode === 'file') ? 'block' : 'none';
+    if (grpUrl) grpUrl.style.display = (mode === 'url') ? 'block' : 'none';
+  },
+
   _handleAddMaterial(e, courseId) {
     e.preventDefault();
-    const body = {
-      title: document.getElementById('mat-title').value,
-      type: document.getElementById('mat-type').value,
-      content_url: document.getElementById('mat-url').value,
-      content: document.getElementById('mat-content').value
-    };
+    const title = document.getElementById('mat-title').value.trim();
+    if (!title) {
+      alert('Judul materi wajib diisi.');
+      return;
+    }
+
+    const mode = document.getElementById('mat-source-type').value;
+    const fileInput = document.getElementById('mat-file');
+    const urlInput = document.getElementById('mat-url');
+    const contentInput = document.getElementById('mat-content');
+    const submitBtn = document.getElementById('btn-save-mat');
+
+    if (mode === 'file' && (!fileInput || !fileInput.files || fileInput.files.length === 0)) {
+      alert('Silakan pilih file yang akan diunggah (.pdf, .pptx, .docx, .xlsx, dll).');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('content', contentInput ? contentInput.value.trim() : '');
+
+    if (mode === 'file' && fileInput.files[0]) {
+      formData.append('file', fileInput.files[0]);
+    } else if (mode === 'url') {
+      formData.append('type', document.getElementById('mat-url-type').value || 'link');
+      formData.append('content_url', urlInput ? urlInput.value.trim() : '');
+    } else {
+      formData.append('type', 'text');
+    }
+
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Mengunggah...';
+    }
+
     fetch(`api/course_detail.php?action=add_material&course_id=${courseId}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    }).then(r => r.json()).then(res => {
+      body: formData
+    })
+    .then(r => r.json())
+    .then(res => {
       if (res.success) {
         this.closeModal();
         this._renderCourseMaterials(courseId, true);
-        this._toast('✅ Materi berhasil ditambahkan!');
-      } else alert(res.message);
+        this._toast('Materi berhasil diunggah!');
+      } else {
+        alert(res.message || 'Gagal menyimpan materi.');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Simpan & Unggah';
+        }
+      }
+    })
+    .catch(err => {
+      alert('Terjadi kesalahan: ' + err.message);
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Simpan & Unggah';
+      }
     });
   },
 
@@ -1216,7 +1324,7 @@ const App = {
     }).then(r => r.json()).then(res => {
       if (res.success) {
         this._renderCourseMaterials(courseId, true);
-        this._toast('✅ Materi berhasil dihapus.');
+        this._toast('Materi berhasil dihapus.');
       } else alert(res.message);
     });
   },
@@ -1241,19 +1349,19 @@ const App = {
             <div class="flex-between" style="font-size:0.82rem;color:var(--text-muted);border-top:1px solid var(--border);padding-top:0.75rem;flex-wrap:wrap;gap:0.5rem;">
               <div>⏳ Tenggat: <b>${a.due_date ? new Date(a.due_date).toLocaleString('id-ID') : 'Tidak dibatasi'}</b> &bull; Nilai Maks: <b>${a.max_score}</b></div>
               <div>
-                ${!isStaff ? `<button class="btn btn-primary btn-sm" onclick="App.openSubmitAssignmentModal(${a.id}, ${courseId})">📤 Kirim / Upload Tugas</button>` : ''}
+                ${!isStaff ? `<button class="btn btn-primary btn-sm" onclick="App.openSubmitAssignmentModal(${a.id}, ${courseId})"><i class="fa-solid fa-upload"></i> Kirim / Upload Tugas</button>` : ''}
               </div>
             </div>
           </div>
-        `).join('') : `<div class="empty-state"><div class="empty-icon">📝</div><p>Belum ada tugas atau pekerjaan rumah.</p></div>`;
+        `).join('') : `<div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-file-pen"></i></div><p>Belum ada tugas atau pekerjaan rumah.</p></div>`;
 
         container.innerHTML = `
           <div class="flex-between mb-3">
             <div>
-              <div class="section-title" style="font-size:1.1rem;">📝 Tugas & Pekerjaan Siswa</div>
+              <div class="section-title" style="font-size:1.1rem;"><i class="fa-solid fa-file-pen"></i> Tugas & Pekerjaan Siswa</div>
               <div class="section-sub">Daftar tugas mandiri, proyek kejuruan, dan pekerjaan rumah.</div>
             </div>
-            ${isStaff ? `<button class="btn btn-primary btn-sm" onclick="App.openAddAssignmentModal(${courseId})">➕ Buat Tugas Baru</button>` : ''}
+            ${isStaff ? `<button class="btn btn-primary btn-sm" onclick="App.openAddAssignmentModal(${courseId})"><i class="fa-solid fa-plus"></i> Buat Tugas Baru</button>` : ''}
           </div>
           <div>${itemsHtml}</div>
         `;
@@ -1273,7 +1381,7 @@ const App = {
         </div>
         <div class="flex-end flex-gap-1">
           <button type="button" class="btn btn-secondary" onclick="App.closeModal()">Batal</button>
-          <button type="submit" class="btn btn-primary">📤 Kirim Tugas</button>
+          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Kirim Tugas</button>
         </div>
       </form>
     `);
@@ -1294,7 +1402,7 @@ const App = {
       if (res.success) {
         this.closeModal();
         this._renderCourseAssignments(courseId, false);
-        this._toast('✅ Tugas berhasil dikirim!');
+        this._toast('Tugas berhasil dikirim!');
       } else alert(res.message);
     });
   },
@@ -1330,7 +1438,7 @@ const App = {
       if (res.success) {
         this.closeModal();
         this._renderCourseAssignments(courseId, true);
-        this._toast('✅ Tugas berhasil dibuat!');
+        this._toast('Tugas berhasil dibuat!');
       } else alert(res.message);
     });
   },
@@ -1361,14 +1469,14 @@ const App = {
               </div>
             ` : ''}
           </div>
-        `).join('') : `<div class="empty-state"><div class="empty-icon">💬</div><p>Belum ada diskusi. Mulai diskusi pertama kelas!</p></div>`;
+        `).join('') : `<div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-comments"></i></div><p>Belum ada diskusi. Mulai diskusi pertama kelas!</p></div>`;
 
         container.innerHTML = `
           <div class="card mb-3" style="padding:1rem;">
-            <div style="font-weight:600;margin-bottom:0.5rem;font-size:0.92rem;">💬 Kirim Pesan Diskusi Kelas</div>
+            <div style="font-weight:600;margin-bottom:0.5rem;font-size:0.92rem;"><i class="fa-solid fa-comments"></i> Kirim Pesan Diskusi Kelas</div>
             <div style="display:flex;gap:0.5rem;">
               <input type="text" id="disc-msg" class="form-control" placeholder="Tulis pertanyaan atau tanggapan untuk kelas ini..." style="flex:1;">
-              <button class="btn btn-primary" onclick="App._sendDiscussion(${courseId})">Kirim 🚀</button>
+              <button class="btn btn-primary" onclick="App._sendDiscussion(${courseId})"><i class="fa-solid fa-paper-plane"></i> Kirim</button>
             </div>
           </div>
           <div>${threadsHtml}</div>
@@ -1389,7 +1497,7 @@ const App = {
       if (res.success) {
         input.value = '';
         this._renderCourseDiscussions(courseId);
-        this._toast('✅ Pesan diskusi terkirim.');
+        this._toast('Pesan diskusi terkirim.');
       } else alert(res.message);
     });
   },
@@ -1407,14 +1515,14 @@ const App = {
             <tr><td style="font-weight:600;">Nama Mata Pelajaran</td><td><b>${this.escHtml(c.course_name)}</b></td></tr>
             <tr><td style="font-weight:600;">Jurusan Keahlian</td><td><span class="badge badge-amber">${this.escHtml(c.major || 'Umum')}</span></td></tr>
             <tr><td style="font-weight:600;">Rombel / Kelas Sasaran</td><td>${this.escHtml(c.class_name || 'Semua Kelas')}</td></tr>
-            <tr><td style="font-weight:600;">Guru Pengampu</td><td>👨‍🏫 ${this.escHtml(c.teacher_name || 'Belum ditugaskan')}</td></tr>
-            <tr><td style="font-weight:600;">Total Evaluasi CBT</td><td>📝 ${stats.quizzes || 0} Paket Ujian Aktif</td></tr>
+            <tr><td style="font-weight:600;">Guru Pengampu</td><td><i class="fa-solid fa-chalkboard-user"></i> ${this.escHtml(c.teacher_name || 'Belum ditugaskan')}</td></tr>
+            <tr><td style="font-weight:600;">Total Evaluasi CBT</td><td><i class="fa-solid fa-file-pen"></i> ${stats.quizzes || 0} Paket Ujian Aktif</td></tr>
             <tr><td style="font-weight:600;">Deskripsi Mapel</td><td>${this.escHtml(c.description || 'Mata pelajaran kejuruan kurikulum merdeka SMKN 1 CIBINONG.')}</td></tr>
           </tbody>
         </table>
         <div style="display:flex;gap:0.75rem;">
-          <button class="btn btn-primary" onclick="App.renderAppLayout('cbt')">📝 Buka Ujian CBT Mapel Ini</button>
-          <button class="btn btn-secondary" onclick="App.renderAppLayout('schedules')">📅 Cek Jadwal Kelas</button>
+          <button class="btn btn-primary" onclick="App.renderAppLayout('cbt')"><i class="fa-solid fa-file-pen"></i> Buka Ujian CBT Mapel Ini</button>
+          <button class="btn btn-secondary" onclick="App.renderAppLayout('schedules')"><i class="fa-solid fa-calendar-days"></i> Cek Jadwal Kelas</button>
         </div>
       </div>
     `;
@@ -1438,17 +1546,17 @@ const App = {
             <td><span class="badge badge-amber">${this.escHtml(cl.major || 'Umum')}</span></td>
             <td>${this.escHtml(cl.academic_year)}</td>
             <td><span class="badge badge-cyan">${cl.total_students !== undefined ? cl.total_students : (cl.student_count || 0)} siswa</span></td>
-            <td>${isStaff ? `<button class="btn btn-danger btn-sm" onclick="App.deleteClass(${cl.id})">🗑️ Hapus</button>` : '—'}</td>
+            <td>${isStaff ? `<button class="btn btn-danger btn-sm" onclick="App.deleteClass(${cl.id})"><i class="fa-solid fa-trash"></i> Hapus</button>` : '—'}</td>
           </tr>
-        `).join('') : `<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">🏛️</div><p>Belum ada kelas.</p></div></td></tr>`;
+        `).join('') : `<tr><td colspan="6"><div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-building-columns"></i></div><p>Belum ada kelas.</p></div></td></tr>`;
 
         this.setContent(`
           <div class="flex-between mb-3">
             <div>
-              <div class="section-title">🏛️ Kelas & Rombel</div>
+              <div class="section-title"><i class="fa-solid fa-building-columns"></i> Kelas & Rombel</div>
               <div class="section-sub">Manajemen kelas dan rombongan belajar SMKN 1 CIBINONG.</div>
             </div>
-            ${isStaff ? `<button class="btn btn-primary" onclick="App.openAddClassModal()">➕ Tambah Kelas</button>` : ''}
+            ${isStaff ? `<button class="btn btn-primary" onclick="App.openAddClassModal()"><i class="fa-solid fa-plus"></i> Tambah Kelas</button>` : ''}
           </div>
           <div class="card">
             <div class="table-wrapper">
@@ -1529,17 +1637,17 @@ const App = {
             <td>${this.escHtml(s.class_name)}</td>
             <td>${this.escHtml(s.room || '-')}</td>
             <td>${this.escHtml(s.teacher_name || '-')}</td>
-            ${isStaff ? `<td><button class="btn btn-danger btn-sm" onclick="App.deleteSchedule(${s.id})">🗑️</button></td>` : ''}
+            ${isStaff ? `<td><button class="btn btn-danger btn-sm" onclick="App.deleteSchedule(${s.id})"><i class="fa-solid fa-trash"></i></button></td>` : ''}
           </tr>
-        `).join('') : `<tr><td colspan="${isStaff ? 8 : 7}"><div class="empty-state"><div class="empty-icon">📅</div><p>Belum ada jadwal kelas.</p></div></td></tr>`;
+        `).join('') : `<tr><td colspan="${isStaff ? 8 : 7}"><div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-calendar-days"></i></div><p>Belum ada jadwal kelas.</p></div></td></tr>`;
 
         this.setContent(`
           <div class="flex-between mb-3">
             <div>
-              <div class="section-title">📅 Jadwal Kelas</div>
+              <div class="section-title"><i class="fa-solid fa-calendar-days"></i> Jadwal Kelas</div>
               <div class="section-sub">Informasi jadwal mata pelajaran harian.</div>
             </div>
-            ${isStaff ? `<button class="btn btn-primary" onclick="App.openAddScheduleModal()">➕ Tambah Jadwal</button>` : ''}
+            ${isStaff ? `<button class="btn btn-primary" onclick="App.openAddScheduleModal()"><i class="fa-solid fa-plus"></i> Tambah Jadwal</button>` : ''}
           </div>
           <div class="card">
             <div class="table-wrapper">
@@ -1638,26 +1746,26 @@ const App = {
               <div class="quiz-card-desc">${this.escHtml(q.description || 'Tidak ada deskripsi.')}</div>
             </div>
             <div class="quiz-card-actions">
-              <button class="btn btn-outline btn-full" onclick="App.openManageQuestions(${q.id})">📝 Kelola Soal (${qCount})</button>
+              <button class="btn btn-outline btn-full" onclick="App.openManageQuestions(${q.id})"><i class="fa-solid fa-list-check"></i> Kelola Soal (${qCount})</button>
               <div class="flex-gap-1 mt-1">
-                <button class="btn btn-secondary" style="flex:1;justify-content:center;" onclick="App.openExamResultsPanel(${q.id})">📊 Hasil & Reset</button>
-                <button class="btn btn-secondary" style="flex:1;justify-content:center;" onclick="App.openMonitoringModal(${q.id})">🛡️ Monitoring</button>
+                <button class="btn btn-secondary" style="flex:1;justify-content:center;" onclick="App.openExamResultsPanel(${q.id})"><i class="fa-solid fa-chart-column"></i> Hasil & Reset</button>
+                <button class="btn btn-secondary" style="flex:1;justify-content:center;" onclick="App.openMonitoringModal(${q.id})"><i class="fa-solid fa-shield-halved"></i> Monitoring</button>
               </div>
               <div class="flex-gap-1 mt-1">
-                <button class="btn btn-secondary btn-sm" onclick="App.openEditQuizModal(${q.id})" title="Edit Ujian" style="flex:1;">✏️ Edit</button>
-                <button class="btn btn-danger btn-sm" onclick="App.deleteQuiz(${q.id})" title="Hapus Ujian" style="flex:1;">🗑️ Hapus</button>
+                <button class="btn btn-secondary btn-sm" onclick="App.openEditQuizModal(${q.id})" title="Edit Ujian" style="flex:1;"><i class="fa-solid fa-pen"></i> Edit</button>
+                <button class="btn btn-danger btn-sm" onclick="App.deleteQuiz(${q.id})" title="Hapus Ujian" style="flex:1;"><i class="fa-solid fa-trash"></i> Hapus</button>
               </div>
             </div>
           </div>
-        `;}).join('') : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">📝</div><p>Belum ada paket ujian. Buat ujian pertama Anda!</p></div>`;
+        `;}).join('') : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon"><i class="fa-solid fa-file-pen"></i></div><p>Belum ada paket ujian. Buat ujian pertama Anda!</p></div>`;
 
         this.setContent(`
           <div class="flex-between mb-3">
             <div>
-              <div class="section-title">📝 Manajemen Ujian CBT</div>
+              <div class="section-title"><i class="fa-solid fa-file-pen"></i> Manajemen Ujian CBT</div>
               <div class="section-sub">Buat soal, kelola ujian, dan pantau deteksi kecurangan siswa.</div>
             </div>
-            <button class="btn btn-primary" onclick="App.openCreateQuizModal()">➕ Buat Ujian Baru</button>
+            <button class="btn btn-primary" onclick="App.openCreateQuizModal()"><i class="fa-solid fa-plus"></i> Buat Ujian Baru</button>
           </div>
           <div class="cards-grid">${cards}</div>
         `);
@@ -1702,7 +1810,7 @@ const App = {
         if (d.success) {
           this.closeModal();
           this.loadTeacherCbt();
-          this._toast('✅ Paket ujian berhasil dibuat.');
+          this._toast('Paket ujian berhasil dibuat.');
         } else alert(d.message);
       });
   },
@@ -1754,7 +1862,7 @@ const App = {
       if (d.success) {
         this.closeModal();
         this.loadTeacherCbt();
-        this._toast('✅ Paket ujian berhasil diperbarui.');
+        this._toast('Paket ujian berhasil diperbarui.');
       } else alert(d.message);
     });
   },
@@ -1765,7 +1873,7 @@ const App = {
       .then(r => r.json())
       .then(() => {
         this.loadTeacherCbt();
-        this._toast('✅ Paket ujian dihapus.');
+        this._toast('Paket ujian dihapus.');
       });
   },
 
@@ -1789,17 +1897,17 @@ const App = {
             <td><span class="badge badge-cyan">${q.points || 1} Poin</span></td>
             <td>
               <div style="display:flex;gap:0.35rem;">
-                <button class="btn btn-secondary btn-sm" onclick="App.openEditQuestionModal(${q.id}, ${quizId})" title="Edit Soal">✏️</button>
-                <button class="btn btn-danger btn-sm" onclick="App.deleteQuestion(${q.id}, ${quizId})" title="Hapus Soal">🗑️</button>
+                <button class="btn btn-secondary btn-sm" onclick="App.openEditQuestionModal(${q.id}, ${quizId})" title="Edit Soal"><i class="fa-solid fa-pen"></i></button>
+                <button class="btn btn-danger btn-sm" onclick="App.deleteQuestion(${q.id}, ${quizId})" title="Hapus Soal"><i class="fa-solid fa-trash"></i></button>
               </div>
             </td>
           </tr>
-        `;}).join('') : `<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">📝</div><p>Belum ada soal. Tambah soal pertama!</p></div></td></tr>`;
+        `;}).join('') : `<tr><td colspan="6"><div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-file-pen"></i></div><p>Belum ada soal. Tambah soal pertama!</p></div></td></tr>`;
 
         this.openModal('Kelola Soal Ujian', `
           <div class="flex-between mb-2">
             <span class="badge badge-cyan">${questions.length} Soal Terdaftar</span>
-            <button class="btn btn-primary btn-sm" onclick="App.openAddQuestionModal(${quizId})">➕ Tambah Soal</button>
+            <button class="btn btn-primary btn-sm" onclick="App.openAddQuestionModal(${quizId})"><i class="fa-solid fa-plus"></i> Tambah Soal</button>
           </div>
           <div class="table-wrapper">
             <table class="data-table">
@@ -1844,6 +1952,10 @@ const App = {
             <textarea id="q-essay-ans" class="form-control" rows="3" placeholder="Kriteria jawaban benar untuk panduan penilaian guru…"></textarea>
           </div>
         </div>
+        <div class="form-group mb-2">
+          <label class="form-label"><i class="fa-solid fa-lightbulb"></i> Pembahasan & Penjelasan Soal (Evaluasi)</label>
+          <textarea id="q-explanation" class="form-control" rows="3" placeholder="Masukkan uraian penjelasan/pembahasan lengkap mengapa jawaban tersebut benar untuk dibaca siswa saat evaluasi ujian…"></textarea>
+        </div>
         <div class="form-group mb-3"><label class="form-label">Bobot Poin</label>
           <input type="number" id="q-points" class="form-control" value="1" min="1" max="100">
         </div>
@@ -1869,7 +1981,8 @@ const App = {
       quiz_id: quizId,
       type: type,
       question_text: document.getElementById('q-text').value,
-      points: document.getElementById('q-points').value || 1
+      points: document.getElementById('q-points').value || 1,
+      explanation: document.getElementById('q-explanation')?.value || ''
     };
     if (type === 'multiple_choice') {
       body.option_a = document.getElementById('q-a').value;
@@ -1889,7 +2002,7 @@ const App = {
       if (d.success) {
         this.closeModal();
         this.openManageQuestions(quizId);
-        this._toast('✅ Soal berhasil ditambahkan!');
+        this._toast('Soal berhasil ditambahkan!');
       } else alert(d.message);
     });
   },
@@ -1939,6 +2052,10 @@ const App = {
                 <textarea id="eq-essay-ans" class="form-control" rows="3">${this.escHtml(q.essay_answer || '')}</textarea>
               </div>
             </div>
+            <div class="form-group mb-2">
+              <label class="form-label"><i class="fa-solid fa-lightbulb"></i> Pembahasan & Penjelasan Soal (Evaluasi)</label>
+              <textarea id="eq-explanation" class="form-control" rows="3" placeholder="Masukkan uraian penjelasan/pembahasan lengkap untuk evaluasi siswa…">${this.escHtml(q.explanation || '')}</textarea>
+            </div>
             <div class="form-group mb-3"><label class="form-label">Bobot Poin</label>
               <input type="number" id="eq-points" class="form-control" value="${q.points || 1}" min="1" max="100">
             </div>
@@ -1965,7 +2082,8 @@ const App = {
       id: qId,
       type: type,
       question_text: document.getElementById('eq-text').value,
-      points: document.getElementById('eq-points').value || 1
+      points: document.getElementById('eq-points').value || 1,
+      explanation: document.getElementById('eq-explanation')?.value || ''
     };
     if (type === 'multiple_choice') {
       body.option_a = document.getElementById('eq-a').value;
@@ -1985,7 +2103,7 @@ const App = {
       if (d.success) {
         this.closeModal();
         this.openManageQuestions(quizId);
-        this._toast('✅ Soal berhasil diperbarui!');
+        this._toast('Soal berhasil diperbarui!');
       } else alert(d.message);
     });
   },
@@ -1995,7 +2113,7 @@ const App = {
     fetch('api/questions.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', question_id: qId }) })
       .then(() => {
         this.openManageQuestions(quizId);
-        this._toast('✅ Soal berhasil dihapus.');
+        this._toast('Soal berhasil dihapus.');
       });
   },
 
@@ -2012,12 +2130,12 @@ const App = {
 
         const tableRows = attempts.length ? attempts.map(att => {
           let lvl = '';
-          if (att.status === 'disqualified' || att.violations_count >= 3) lvl = `<span class="badge badge-danger">🔒 3/3 DISQ</span>`;
-          else if (att.violations_count === 2) lvl = `<span class="badge badge-amber">⚠️ 2/3</span>`;
-          else if (att.violations_count === 1) lvl = `<span class="badge badge-amber">⚠️ 1/3</span>`;
-          else lvl = `<span class="badge badge-green">✓ CLEAN</span>`;
+          if (att.status === 'disqualified' || att.violations_count >= 3) lvl = `<span class="badge badge-danger"><i class="fa-solid fa-lock"></i> 3/3 DISQ</span>`;
+          else if (att.violations_count === 2) lvl = `<span class="badge badge-amber"><i class="fa-solid fa-triangle-exclamation"></i> 2/3</span>`;
+          else if (att.violations_count === 1) lvl = `<span class="badge badge-amber"><i class="fa-solid fa-triangle-exclamation"></i> 1/3</span>`;
+          else lvl = `<span class="badge badge-green"><i class="fa-solid fa-check"></i> CLEAN</span>`;
 
-          const logs = att.cheat_logs?.length ? `<ul style="padding-left:1rem;margin:0;font-size:0.77rem;line-height:1.4;">${att.cheat_logs.map(l => `<li><span class="text-danger">[${(l.created_at||'').split(' ')[1]||''}]</span> ${this.escHtml(l.details)}</li>`).join('')}</ul>` : `<span class="text-green" style="font-size:0.82rem;">✓ Tidak ada pelanggaran</span>`;
+          const logs = att.cheat_logs?.length ? `<ul style="padding-left:1rem;margin:0;font-size:0.77rem;line-height:1.4;">${att.cheat_logs.map(l => `<li><span class="text-danger">[${(l.created_at||'').split(' ')[1]||''}]</span> ${this.escHtml(l.details)}</li>`).join('')}</ul>` : `<span class="text-green" style="font-size:0.82rem;"><i class="fa-solid fa-check"></i> Tidak ada pelanggaran</span>`;
 
           return `
             <tr style="${att.status === 'disqualified' ? 'background:rgba(239,68,68,0.06);' : ''}">
@@ -2033,12 +2151,12 @@ const App = {
               <td><span class="font-mono font-800" style="font-size:1.1rem;color:var(--cyan);">${att.score}</span><span class="text-muted"> /100</span></td>
               <td>${lvl}</td>
               <td style="max-width:240px;">${logs}</td>
-              <td><button class="btn btn-amber btn-sm" onclick="App.resetStudentExam(${att.id},'${this.escHtml(att.student_name)}',${quizId})">🔄 Reset & Buka</button></td>
+              <td><button class="btn btn-amber btn-sm" onclick="App.resetStudentExam(${att.id},'${this.escHtml(att.student_name)}',${quizId})"><i class="fa-solid fa-rotate-left"></i> Reset & Buka</button></td>
             </tr>
           `;
         }).join('') : `<tr><td colspan="6"><div class="empty-state"><p>Belum ada siswa yang mengerjakan ujian ini.</p></div></td></tr>`;
 
-        this.openModal('🛡️ Incident Forensics & Monitoring Ujian', `
+        this.openModal('Incident Forensics & Monitoring Ujian', `
           <div class="incident-kpi-bar">
             <div class="incident-kpi"><div class="incident-kpi-label text-muted">Total Peserta</div><div class="incident-kpi-val">${total}</div></div>
             <div class="incident-kpi"><div class="incident-kpi-label" style="color:var(--emerald);">Tertib (Clean)</div><div class="incident-kpi-val text-green">${clean}</div></div>
@@ -2056,7 +2174,7 @@ const App = {
   },
 
   resetStudentExam(attemptId, studentName, quizId) {
-    if (!confirm(`⚠️ Reset Ujian — "${studentName}"\n\nSemua jawaban, skor, pelanggaran, dan status akan dihapus.\nSiswa dapat mengerjakan kembali dari awal.\n\nLanjutkan?`)) return;
+    if (!confirm(`Reset Ujian — "${studentName}"\n\nSemua jawaban, skor, pelanggaran, dan status akan dihapus.\nSiswa dapat mengerjakan kembali dari awal.\n\nLanjutkan?`)) return;
     fetch('api/exam.php?action=reset', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2064,7 +2182,7 @@ const App = {
     })
       .then(r => r.json())
       .then(d => {
-        this._toast(d.success ? `✅ Ujian "${studentName}" berhasil direset.` : `❌ ${d.message}`);
+        this._toast(d.success ? `Ujian "${studentName}" berhasil direset.` : `${d.message}`);
         if (d.success) this.openExamResultsPanel(quizId);
       });
   },
@@ -2083,13 +2201,13 @@ const App = {
 
         const rows = attempts.length ? attempts.map(att => {
           const statusBadge =
-            att.status === 'completed'   ? `<span class="badge badge-green">✅ Selesai</span>` :
-            att.status === 'in_progress' ? `<span class="badge badge-cyan">🔄 Berlangsung</span>` :
-            att.status === 'disqualified'? `<span class="badge badge-danger">🚫 Diskualifikasi</span>` :
+            att.status === 'completed'   ? `<span class="badge badge-green"><i class="fa-solid fa-circle-check"></i> Selesai</span>` :
+            att.status === 'in_progress' ? `<span class="badge badge-cyan"><i class="fa-solid fa-rotate"></i> Berlangsung</span>` :
+            att.status === 'disqualified'? `<span class="badge badge-danger"><i class="fa-solid fa-ban"></i> Diskualifikasi</span>` :
                                            `<span class="badge badge-muted">${att.status}</span>`;
 
           const violBadge = att.violations_count >= 3
-            ? `<span class="badge badge-danger">${att.violations_count}x ⚠️</span>`
+            ? `<span class="badge badge-danger">${att.violations_count}x <i class="fa-solid fa-triangle-exclamation"></i></span>`
             : att.violations_count > 0
               ? `<span class="badge badge-amber">${att.violations_count}x</span>`
               : `<span class="badge badge-green">0</span>`;
@@ -2110,13 +2228,13 @@ const App = {
               <td style="font-size:0.78rem;color:var(--text-muted);">${selesaiAt}</td>
               <td>
                 <button class="btn btn-amber btn-sm" onclick="App.resetStudentExam(${att.id},'${this.escHtml(att.student_name)}',${quizId})" title="Hapus attempt dan izinkan siswa mengulang ujian">
-                  🔄 Reset
+                  <i class="fa-solid fa-rotate-left"></i> Reset
                 </button>
               </td>
             </tr>`;
         }).join('') : `<tr><td colspan="7"><div class="empty-state"><p>Belum ada siswa yang mengerjakan ujian ini.</p></div></td></tr>`;
 
-        this.openModal('📊 Hasil & Manajemen Reset Ujian', `
+        this.openModal('<i class="fa-solid fa-chart-column"></i> Hasil & Manajemen Reset Ujian', `
           <div class="incident-kpi-bar" style="margin-bottom:1.25rem;">
             <div class="incident-kpi"><div class="incident-kpi-label text-muted">Total Peserta</div><div class="incident-kpi-val">${total}</div></div>
             <div class="incident-kpi"><div class="incident-kpi-label" style="color:var(--emerald);">Selesai</div><div class="incident-kpi-val text-green">${selesai}</div></div>
@@ -2125,7 +2243,7 @@ const App = {
             <div class="incident-kpi"><div class="incident-kpi-label" style="color:var(--amber);">Rata-rata Skor</div><div class="incident-kpi-val" style="color:var(--amber);">${avgSkor}</div></div>
           </div>
           <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.75rem;">
-            💡 Klik <b>Reset</b> untuk menghapus attempt siswa — siswa dapat mengerjakan kembali dari awal.
+            <i class="fa-solid fa-circle-info"></i> Klik <b>Reset</b> untuk menghapus attempt siswa — siswa dapat mengerjakan kembali dari awal.
           </div>
           <div class="table-wrapper">
             <table class="data-table">
@@ -2150,15 +2268,15 @@ const App = {
 
           if (!att) {
             // Belum pernah mengerjakan
-            action = `<button class="btn btn-primary btn-full" onclick="App.confirmStartExam(${q.id},'${this.escHtml(q.title)}')">🚀 Mulai Ujian</button>`;
+            action = `<button class="btn btn-primary btn-full" onclick="App.confirmStartExam(${q.id},'${this.escHtml(q.title)}')"><i class="fa-solid fa-rocket"></i> Mulai Ujian</button>`;
           } else if (att.status === 'in_progress') {
             // Sedang berlangsung (resume)
-            action = `<button class="btn btn-amber btn-full" onclick="App.startExam(${q.id})">▶️ Lanjutkan Ujian</button>`;
+            action = `<button class="btn btn-amber btn-full" onclick="App.startExam(${q.id})"><i class="fa-solid fa-play"></i> Lanjutkan Ujian</button>`;
           } else if (att.status === 'disqualified') {
             // Diskualifikasi
             action = `
               <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);padding:0.85rem;border-radius:var(--r-md);text-align:center;">
-                <div style="font-size:1.5rem;margin-bottom:0.3rem;">🚫</div>
+                <div style="font-size:1.5rem;margin-bottom:0.3rem;color:var(--danger);"><i class="fa-solid fa-ban"></i></div>
                 <div class="font-700 text-danger">Didiskualifikasi</div>
                 <div class="text-muted" style="font-size:0.78rem;margin-top:0.25rem;">Keluar layar lebih dari 3x. Hubungi Admin/Guru untuk Reset Ujian.</div>
               </div>`;
@@ -2169,11 +2287,11 @@ const App = {
             const lulus = skor >= kkm;
             action = `
               <div style="background:${lulus ? 'rgba(16,185,129,0.08)' : 'rgba(249,115,22,0.08)'};border:1px solid ${lulus ? 'rgba(16,185,129,0.35)' : 'rgba(249,115,22,0.35)'};padding:0.85rem;border-radius:var(--r-md);text-align:center;">
-                <div style="font-size:1.4rem;margin-bottom:0.3rem;">${lulus ? '✅' : '📋'}</div>
+                <div style="font-size:1.4rem;margin-bottom:0.3rem;">${lulus ? '<i class="fa-solid fa-circle-check" style="color:var(--emerald);"></i>' : '<i class="fa-solid fa-file-lines"></i>'}</div>
                 <div class="font-700" style="color:${lulus ? 'var(--emerald)' : 'var(--amber)'};">${lulus ? 'Ujian Selesai — LULUS' : 'Ujian Selesai'}</div>
                 <div style="font-size:1.5rem;font-weight:900;margin:0.3rem 0;color:var(--cyan);">${skor} <span style="font-size:0.9rem;font-weight:400;color:var(--text-muted);">/ 100</span></div>
                 <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.6rem;">KKM: ${kkm} &nbsp;|&nbsp; Ujian hanya boleh dikerjakan 1x</div>
-                <button class="btn btn-secondary btn-sm btn-full" onclick="App.openExamReview(${att.id})">🔍 Lihat Pembahasan & Jawaban</button>
+                <button class="btn btn-secondary btn-sm btn-full" onclick="App.openExamReview(${att.id})"><i class="fa-solid fa-square-poll-vertical"></i> Lihat Pembahasan & Jawaban</button>
               </div>`;
           } else {
             // Fallback
@@ -2194,11 +2312,11 @@ const App = {
               <div style="margin-top:1rem;">${action}</div>
             </div>
           `;
-        }).join('') : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">📝</div><p>Belum ada ujian aktif saat ini.</p></div>`;
+        }).join('') : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon"><i class="fa-solid fa-file-pen"></i></div><p>Belum ada ujian aktif saat ini.</p></div>`;
 
         this.setContent(`
           <div class="mb-3">
-            <div class="section-title">📝 Ujian CBT Online</div>
+            <div class="section-title"><i class="fa-solid fa-file-pen"></i> Ujian CBT Online</div>
             <div class="section-sub">Pilih paket ujian aktif. Setiap ujian hanya dapat dikerjakan <b>1 (satu) kali</b>. Dilarang berpindah tab atau meminimalkan layar selama ujian.</div>
           </div>
           <div class="cards-grid">${cards}</div>
@@ -2213,9 +2331,9 @@ const App = {
       this._modalPreviewStream = null;
     }
 
-    this.openModal('🔒 Konfirmasi Ujian & Perizinan Kamera', `
+    this.openModal('Konfirmasi Ujian & Perizinan Kamera', `
       <div style="text-align:center;">
-        <div style="font-size:3rem;margin-bottom:0.5rem;">📷</div>
+        <div style="font-size:3rem;margin-bottom:0.5rem;color:var(--cyan);"><i class="fa-solid fa-camera"></i></div>
         <h2 style="font-size:1.15rem;margin-bottom:0.5rem;">Ujian: ${this.escHtml(title)}</h2>
         <p style="color:var(--text-sub);font-size:0.85rem;line-height:1.6;margin-bottom:1rem;">
           Ujian ini dilindungi oleh <b>E-Learning SMKN 1 CIBINONG Anti-Cheat Guard &amp; Live Proctoring</b>.<br>
@@ -2226,7 +2344,7 @@ const App = {
         <div style="width:200px;height:150px;background:#000;border-radius:var(--r-md);margin:0 auto 1rem;position:relative;overflow:hidden;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;">
           <video id="modal-cam-preview" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;display:none;"></video>
           <div id="modal-cam-placeholder" style="text-align:center;padding:0.5rem;color:var(--text-muted);font-size:0.75rem;">
-            <div style="font-size:1.8rem;margin-bottom:0.2rem;">📹</div>
+            <div style="font-size:1.8rem;margin-bottom:0.2rem;color:var(--cyan);"><i class="fa-solid fa-video"></i></div>
             <span id="modal-cam-placeholder-text">Menginisialisasi kamera…</span>
           </div>
         </div>
@@ -2239,7 +2357,7 @@ const App = {
           <button class="btn btn-primary" id="btn-start-cbt-exec" disabled
             style="opacity:0.55;cursor:not-allowed;"
             onclick="App.execStartExamDirect(${quizId})">
-            🚀 Saya Paham, Mulai Ujian
+            <i class="fa-solid fa-rocket"></i> Saya Paham, Mulai Ujian
           </button>
         </div>
       </div>
@@ -2271,7 +2389,7 @@ const App = {
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       // Browser doesn't support getUserMedia — allow start anyway
-      if (statusBox) statusBox.innerHTML = `<span class="badge badge-amber">⚠️ Browser tidak mendukung kamera. Mode standar aktif.</span>`;
+      if (statusBox) statusBox.innerHTML = `<span class="badge badge-amber"><i class="fa-solid fa-triangle-exclamation"></i> Browser tidak mendukung kamera. Mode standar aktif.</span>`;
       this._enableStartBtn(btn);
       return;
     }
@@ -2292,7 +2410,7 @@ const App = {
 
       if (video)  { video.srcObject = stream; video.style.display = 'block'; }
       if (ph)     { ph.style.display = 'none'; }
-      if (statusBox) statusBox.innerHTML = `<span class="badge badge-green">✅ Kamera Aktif — Siap Ujian</span>`;
+      if (statusBox) statusBox.innerHTML = `<span class="badge badge-green"><i class="fa-solid fa-circle-check"></i> Kamera Aktif — Siap Ujian</span>`;
       this._enableStartBtn(btn);
 
     } catch (err) {
@@ -2301,11 +2419,11 @@ const App = {
       // Guard: modal might be gone
       if (!getEl('btn-start-cbt-exec')) return;
 
-      let msg = '⚠️ Kamera tidak dapat diakses.';
+      let msg = 'Kamera tidak dapat diakses.';
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        msg = '🚫 Izin kamera ditolak. Ujian berjalan tanpa proctoring kamera.';
+        msg = 'Izin kamera ditolak. Ujian berjalan tanpa proctoring kamera.';
       } else if (err.name === 'NotFoundError') {
-        msg = '📷 Tidak ada kamera terdeteksi. Ujian berjalan tanpa proctoring kamera.';
+        msg = 'Tidak ada kamera terdeteksi. Ujian berjalan tanpa proctoring kamera.';
       }
 
       if (phText)  phText.textContent = 'Kamera tidak tersedia.';
@@ -2347,6 +2465,7 @@ const App = {
         this.currentQuiz          = data.quiz;
         this.questions            = data.questions;
         this.savedAnswers         = data.saved_answers || {};
+        this.savedEssays          = data.saved_essays || {};
         this.flaggedQuestions     = {};
         this.attemptId            = data.attempt_id;
         this.currentQuestionIndex = 0;
@@ -2428,7 +2547,7 @@ const App = {
       if (Date.now() < this._faceGraceUntil) {
         if (badgeEl) {
           badgeEl.className = 'face-status-pill detected';
-          badgeEl.innerHTML = '🟢 Menginisialisasi Kamera…';
+          badgeEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Menginisialisasi Kamera…';
         }
         return;
       }
@@ -2437,14 +2556,14 @@ const App = {
         this._missingFaceCount = 0;
         if (badgeEl) {
           badgeEl.className = 'face-status-pill detected';
-          badgeEl.innerHTML = '🟢 Wajah Terdeteksi';
+          badgeEl.innerHTML = '<i class="fa-solid fa-circle" style="color:#10b981;font-size:0.65rem;"></i> Wajah Terdeteksi';
         }
         if (wrapEl) wrapEl.classList.remove('face-missing');
       } else {
         this._missingFaceCount = (this._missingFaceCount || 0) + 1;
         if (badgeEl) {
           badgeEl.className = 'face-status-pill missing';
-          badgeEl.innerHTML = `⚠️ Wajah Hilang (${this._missingFaceCount}/3)`;
+          badgeEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="color:#ef4444;"></i> Wajah Hilang (${this._missingFaceCount}/3)`;
         }
         if (wrapEl) wrapEl.classList.add('face-missing');
 
@@ -2597,7 +2716,7 @@ const App = {
 
     const isFace = (v.type === 'face_not_detected');
     const titleText = isFace ? 'WAJAH TIDAK TERDETEKSI!' : 'PELANGGARAN TERDETEKSI!';
-    const icon = isFace ? '📷' : '⚠️';
+    const icon = isFace ? '<i class="fa-solid fa-camera"></i>' : '<i class="fa-solid fa-triangle-exclamation"></i>';
     const subText = isFace 
       ? 'Wajah Anda tidak terdeteksi di depan kamera pengawas. Pastikan posisi wajah Anda selalu terlihat jelas di kamera selama ujian berlangsung.'
       : 'Anda terdeteksi keluar dari jendela / tab ujian.';
@@ -2631,7 +2750,7 @@ const App = {
     modal.style.zIndex = '999999';
     modal.innerHTML = `
       <div class="modal-box" style="text-align:center;border:2px solid var(--danger);max-width:440px;">
-        <div style="font-size:4rem;color:var(--danger);margin-bottom:0.5rem;">🚫</div>
+        <div style="font-size:4rem;color:var(--danger);margin-bottom:0.5rem;"><i class="fa-solid fa-ban"></i></div>
         <h1 style="color:#f87171;font-size:1.5rem;margin-bottom:0.75rem;">ANDA DIDISKUALIFIKASI</h1>
         <p style="color:var(--text-sub);font-size:0.92rem;margin-bottom:0.5rem;">${d.message || 'Anda telah mencapai batas 3x pelanggaran ujian.'}</p>
         <p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:1.5rem;">Jika ini merupakan kendala teknis, silakan lapor kepada Pengawas/Admin untuk melakukan <b>Reset Ujian</b>.</p>
@@ -2641,14 +2760,22 @@ const App = {
     document.body.appendChild(modal);
   },
 
-  // EXAM SCREEN RENDER (With Large Camera Under Question Navigation)
+  // EXAM SCREEN RENDER (Supports Multiple Choice & Essay with Real-time Input)
   renderExamScreen() {
     const q           = this.questions[this.currentQuestionIndex];
-    const saved       = this.savedAnswers[q.id] || '';
+    const isEssay     = (q.type === 'essay');
+    const savedOpt    = this.savedAnswers[q.id] || '';
+    const savedEssay  = (this.savedEssays && this.savedEssays[q.id]) ? this.savedEssays[q.id] : '';
     const flagged     = !!this.flaggedQuestions[q.id];
-    const answered    = Object.keys(this.savedAnswers).length;
+    const answered    = this.questions.filter(item => {
+      if (item.type === 'essay') {
+        return !!(this.savedEssays && this.savedEssays[item.id] && this.savedEssays[item.id].trim().length > 0);
+      }
+      return !!this.savedAnswers[item.id];
+    }).length;
     const total       = this.questions.length;
     const violations  = window.ExamGuard ? window.ExamGuard.violationCount : 0;
+    const hasCurrentAnswer = isEssay ? !!savedEssay.trim() : !!savedOpt;
 
     document.getElementById('main-content').innerHTML = `
       <div class="exam-shell">
@@ -2657,8 +2784,8 @@ const App = {
         <div class="exam-topbar">
           <div class="exam-title-block">
             <div style="display:flex;gap:0.5rem;margin-bottom:0.25rem;">
-              <span class="badge badge-cyan" style="font-size:0.68rem;">SESI AKTIF</span>
-              <span class="badge badge-danger" style="font-size:0.68rem;">LOCKDOWN CBT</span>
+              <span class="badge badge-cyan" style="font-size:0.68rem;"><i class="fa-solid fa-circle-dot"></i> SESI AKTIF</span>
+              <span class="badge badge-danger" style="font-size:0.68rem;"><i class="fa-solid fa-shield-halved"></i> LOCKDOWN CBT</span>
             </div>
             <h3>${this.escHtml(this.currentQuiz.title)}</h3>
             <small>Kandidat: <b>${this.escHtml(this.currentUser.name)}</b> (${this.currentUser.nip_nis || this.currentUser.username}) — SMKN 1 CIBINONG</small>
@@ -2681,7 +2808,7 @@ const App = {
 
         <!-- Violation Strip -->
         <div class="violation-strip">
-          <span>⚠️</span>
+          <i class="fa-solid fa-triangle-exclamation" style="font-size:1.1rem;color:#fca5a5;"></i>
           <span><b>ANTI-CHEAT AKTIF</b> — Berpindah tab akan dicatat. Pelanggaran: <b id="viol-count-display" style="color:#fca5a5;font-size:1rem;">${violations} / 3</b> (maks. 3x → diskualifikasi)</span>
         </div>
 
@@ -2693,37 +2820,62 @@ const App = {
             <div class="question-meta">
               <div style="display:flex;align-items:center;gap:0.75rem;">
                 <span class="question-num">SOAL ${this.currentQuestionIndex + 1} / ${total}</span>
-                <span class="badge badge-muted">Pilihan Ganda</span>
-                <span class="badge badge-muted">10 Poin</span>
+                <span class="badge ${isEssay ? 'badge-amber' : 'badge-cyan'}">
+                  <i class="fa-solid ${isEssay ? 'fa-pen-nib' : 'fa-list-check'}"></i> ${isEssay ? 'Essai / Uraian' : 'Pilihan Ganda'}
+                </span>
+                <span class="badge badge-muted"><i class="fa-solid fa-star"></i> ${q.points || 10} Poin</span>
               </div>
               <button class="btn btn-sm ${flagged ? 'btn-danger' : 'btn-secondary'}" onclick="App.toggleFlag(${q.id})">
-                ${flagged ? '★ Ditandai Ragu' : '☆ Tandai Ragu-ragu'}
+                ${flagged ? '<i class="fa-solid fa-star"></i> Ditandai Ragu' : '<i class="fa-regular fa-star"></i> Tandai Ragu-ragu'}
               </button>
             </div>
 
             <div class="question-text">${this.escHtml(q.question_text)}</div>
 
-            <div class="options-list">
-              ${['A','B','C','D'].map(k => {
-                const text  = q['option_' + k.toLowerCase()];
-                const sel   = saved === k;
-                return `
-                  <div class="option-item ${sel ? 'selected' : ''}" onclick="App.selectOption(${q.id},'${k}')">
-                    <div class="option-key">${k}</div>
-                    <div class="option-text">${this.escHtml(text)}</div>
-                    ${sel ? `<span class="badge badge-cyan" style="margin-left:auto;flex-shrink:0;">✓ Dipilih</span>` : ''}
-                  </div>
-                `;
-              }).join('')}
-            </div>
+            ${isEssay ? `
+              <!-- Essay Question Input Field -->
+              <div class="essay-input-container">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+                  <label class="form-label" style="font-weight:700;margin:0;display:flex;align-items:center;gap:0.45rem;font-size:0.95rem;color:var(--text-main);">
+                    <i class="fa-solid fa-pen-to-square" style="color:var(--cyan);"></i> Ketikkan Jawaban Uraian Anda di Bawah Ini:
+                  </label>
+                  <span id="essay-save-status" style="font-size:0.75rem;color:var(--emerald);font-weight:600;">
+                    ${savedEssay.trim() ? '<i class="fa-solid fa-circle-check"></i> Tersimpan' : ''}
+                  </span>
+                </div>
+                <textarea id="essay-input-box" class="form-control" rows="8" placeholder="Tuliskan penjelasan atau jawaban essay Anda secara lengkap, runtut, dan jelas di sini..." oninput="App.handleEssayInput(${q.id}, this.value)">${this.escHtml(savedEssay)}</textarea>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.6rem;font-size:0.78rem;color:var(--text-muted);">
+                  <span id="essay-char-count"><i class="fa-solid fa-font"></i> ${savedEssay.length} karakter</span>
+                  <span><i class="fa-solid fa-cloud-arrow-up"></i> Jawaban tersimpan otomatis saat Anda mengetik</span>
+                </div>
+              </div>
+            ` : `
+              <!-- Multiple Choice Options -->
+              <div class="options-list">
+                ${['A','B','C','D'].map(k => {
+                  const text  = q['option_' + k.toLowerCase()];
+                  if (!text) return '';
+                  const sel   = savedOpt === k;
+                  return `
+                    <div class="option-item ${sel ? 'selected' : ''}" onclick="App.selectOption(${q.id},'${k}')">
+                      <div class="option-key">${k}</div>
+                      <div class="option-text">${this.escHtml(text)}</div>
+                      ${sel ? `<span class="badge badge-cyan" style="margin-left:auto;flex-shrink:0;"><i class="fa-solid fa-check"></i> Dipilih</span>` : ''}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
 
             <div class="question-nav-bar">
-              <button class="btn btn-secondary" onclick="App.prevQ()" ${this.currentQuestionIndex === 0 ? 'disabled' : ''}>⬅️ Sebelumnya</button>
+              <button class="btn btn-secondary" onclick="App.prevQ()" ${this.currentQuestionIndex === 0 ? 'disabled' : ''}>
+                <i class="fa-solid fa-arrow-left"></i> Sebelumnya
+              </button>
               <div style="display:flex;gap:0.6rem;align-items:center;">
-                ${saved ? `<button class="btn btn-secondary btn-sm" onclick="App.clearChoice(${q.id})">🗑 Bersihkan</button>` : ''}
+                ${hasCurrentAnswer ? `<button class="btn btn-secondary btn-sm" onclick="App.clearChoice(${q.id})"><i class="fa-solid fa-trash"></i> Bersihkan</button>` : ''}
                 ${this.currentQuestionIndex === total - 1
-                  ? `<button class="btn btn-primary" onclick="App.confirmSubmit()">✅ Selesai & Kirim</button>`
-                  : `<button class="btn btn-primary" onclick="App.nextQ()">Selanjutnya ➡️</button>`}
+                  ? `<button class="btn btn-primary" onclick="App.confirmSubmit()"><i class="fa-solid fa-paper-plane"></i> Selesai & Kirim</button>`
+                  : `<button class="btn btn-primary" onclick="App.nextQ()">Selanjutnya <i class="fa-solid fa-arrow-right"></i></button>`}
               </div>
             </div>
           </div>
@@ -2731,7 +2883,7 @@ const App = {
           <!-- Navigation Palette with Large Camera Underneath -->
           <div class="nav-palette-card">
             <div class="palette-header">
-              <div class="palette-title">🗂 Navigasi Soal</div>
+              <div class="palette-title"><i class="fa-solid fa-layer-group"></i> Navigasi Soal</div>
               <span class="badge badge-cyan">${answered}/${total}</span>
             </div>
             <div class="palette-legend">
@@ -2742,12 +2894,15 @@ const App = {
             </div>
             <div class="palette-grid">
               ${this.questions.map((item, idx) => {
+                const hasAns = (item.type === 'essay')
+                  ? !!(this.savedEssays && this.savedEssays[item.id] && this.savedEssays[item.id].trim().length > 0)
+                  : !!this.savedAnswers[item.id];
                 const cls = [
                   idx === this.currentQuestionIndex ? 'active' : '',
-                  this.savedAnswers[item.id]    ? 'answered' : '',
+                  hasAns ? 'answered' : '',
                   this.flaggedQuestions[item.id] ? 'flagged'  : '',
                 ].filter(Boolean).join(' ');
-                return `<div class="palette-num ${cls}" onclick="App.goToQ(${idx})">${idx + 1}${this.flaggedQuestions[item.id] ? '<span class="palette-flag-star">★</span>' : ''}</div>`;
+                return `<div class="palette-num ${cls}" onclick="App.goToQ(${idx})">${idx + 1}${this.flaggedQuestions[item.id] ? '<span class="palette-flag-star"><i class="fa-solid fa-star" style="font-size:0.55rem;"></i></span>' : ''}</div>`;
               }).join('')}
             </div>
 
@@ -2755,7 +2910,7 @@ const App = {
             <div class="exam-camera-box-large">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
                 <span style="font-size:0.75rem;font-weight:700;color:var(--text-main);display:flex;align-items:center;gap:0.35rem;">
-                  📷 KAMERA PENGAWAS
+                  <i class="fa-solid fa-video"></i> KAMERA PENGAWAS
                 </span>
                 <span style="font-size:0.7rem;font-weight:700;color:var(--danger);display:flex;align-items:center;gap:0.3rem;">
                   <span style="display:inline-block;width:7px;height:7px;background:var(--danger);border-radius:50%;box-shadow:0 0 6px var(--danger);"></span> REC
@@ -2767,7 +2922,7 @@ const App = {
                 <div class="cam-scan-overlay"></div>
                 <div class="cam-rec-dot" style="position:absolute;top:8px;right:8px;z-index:4;"></div>
                 <div id="proctor-face-badge" class="face-status-pill detected">
-                  🟢 Wajah Terdeteksi
+                  <i class="fa-solid fa-circle" style="color:#10b981;font-size:0.65rem;"></i> Wajah Terdeteksi
                 </div>
               </div>
               <small style="display:block;color:var(--text-muted);font-size:0.7rem;margin-top:0.35rem;text-align:center;">
@@ -2776,7 +2931,7 @@ const App = {
             </div>
 
             <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border-subtle);">
-              <button class="btn btn-primary btn-full" onclick="App.confirmSubmit()">✅ Selesaikan Ujian</button>
+              <button class="btn btn-primary btn-full" onclick="App.confirmSubmit()"><i class="fa-solid fa-paper-plane"></i> Selesaikan Ujian</button>
             </div>
           </div>
 
@@ -2802,10 +2957,71 @@ const App = {
     fetch('api/exam.php?action=save_answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ attempt_id: this.attemptId, question_id: qId, selected_option: key }) });
   },
 
+  handleEssayInput(qId, val) {
+    if (!this.savedEssays) this.savedEssays = {};
+    this.savedEssays[qId] = val;
+
+    const countEl = document.getElementById('essay-char-count');
+    if (countEl) countEl.innerHTML = `<i class="fa-solid fa-font"></i> ${val.length} karakter`;
+
+    const statusEl = document.getElementById('essay-save-status');
+    if (statusEl) statusEl.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Menyimpan...`;
+
+    clearTimeout(this._essaySaveTimer);
+    this._essaySaveTimer = setTimeout(() => {
+      fetch('api/exam.php?action=save_answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          attempt_id: this.attemptId,
+          question_id: qId,
+          essay_response: val
+        })
+      }).then(r => r.json()).then(res => {
+        if (statusEl) statusEl.innerHTML = `<i class="fa-solid fa-circle-check" style="color:var(--emerald);"></i> Tersimpan`;
+        const palNums = document.querySelectorAll('.palette-num');
+        if (palNums && palNums[this.currentQuestionIndex]) {
+          if (val.trim().length > 0) palNums[this.currentQuestionIndex].classList.add('answered');
+          else palNums[this.currentQuestionIndex].classList.remove('answered');
+        }
+      }).catch(() => {
+        if (statusEl) statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="color:var(--danger);"></i> Gagal menyimpan`;
+      });
+    }, 600);
+  },
+
   clearChoice(qId) {
-    delete this.savedAnswers[qId];
-    this.renderExamScreen();
-    fetch('api/exam.php?action=save_answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ attempt_id: this.attemptId, question_id: qId, selected_option: '' }) });
+    const q = this.questions ? this.questions.find(item => item.id == qId) : null;
+    if (q && q.type === 'essay') {
+      if (this.savedEssays) this.savedEssays[qId] = '';
+      const box = document.getElementById('essay-input-box');
+      if (box) box.value = '';
+      const countEl = document.getElementById('essay-char-count');
+      if (countEl) countEl.innerHTML = `<i class="fa-solid fa-font"></i> 0 karakter`;
+      const statusEl = document.getElementById('essay-save-status');
+      if (statusEl) statusEl.innerHTML = '';
+      const palNums = document.querySelectorAll('.palette-num');
+      if (palNums && palNums[this.currentQuestionIndex]) {
+        palNums[this.currentQuestionIndex].classList.remove('answered');
+      }
+      fetch('api/exam.php?action=save_answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attempt_id: this.attemptId, question_id: qId, essay_response: '' })
+      });
+    } else {
+      delete this.savedAnswers[qId];
+      this.renderExamScreen();
+      fetch('api/exam.php?action=save_answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ attempt_id: this.attemptId, question_id: qId, selected_option: '' }) });
+    }
+  },
+
+  generateMCExplanation(q, isCor, userAns, corAns, corText) {
+    return `Soal ini menguji pemahaman konsep secara terarah. Jawaban yang tepat dan valid adalah <b>Opsi ${corAns}</b> (<i>${this.escHtml(corText)}</i>) karena telah sesuai dengan standar materi dan kompetensi yang dipelajari. Opsi lainnya merupakan pengecoh yang memiliki kekeliruan konsep atau tidak sesuai dengan pertanyaan yang diajukan.`;
+  },
+
+  generateEssayExplanation(q) {
+    return `Soal uraian / essay ini bertujuan mengevaluasi daya nalar, kedalaman konsep, dan kemampuan siswa dalam menguraikan materi secara sistematis. Evaluasi penilaian dinilai dari kesesuaian uraian terhadap kriteria rubrik acuan pengampu serta kelengkapan fakta dan argumen logis yang disajikan.`;
   },
 
   toggleFlag(qId) {
@@ -2838,18 +3054,23 @@ const App = {
   },
 
   confirmSubmit() {
-    const ans = Object.keys(this.savedAnswers).length;
+    const ans = this.questions.filter(item => {
+      if (item.type === 'essay') {
+        return !!(this.savedEssays && this.savedEssays[item.id] && this.savedEssays[item.id].trim().length > 0);
+      }
+      return !!this.savedAnswers[item.id];
+    }).length;
     const tot = this.questions.length;
-    this.openModal('✅ Kirim Jawaban Ujian?', `
+    this.openModal('Kirim Jawaban Ujian?', `
       <div style="text-align:center;">
-        <div style="font-size:3rem;margin-bottom:0.75rem;">📋</div>
+        <div style="font-size:2.8rem;margin-bottom:0.75rem;color:var(--cyan);"><i class="fa-solid fa-file-circle-check"></i></div>
         <p style="color:var(--text-sub);margin-bottom:1rem;font-size:0.92rem;">
           Anda telah menjawab <b style="color:var(--cyan);">${ans} dari ${tot}</b> soal.<br>
-          Setelah dikirim, jawaban Anda akan otomatis dievaluasi dan nilai serta pembahasannya akan ditampilkan.
+          Setelah dikirim, ujian selesai dan evaluasi beserta pembahasan menyeluruh akan ditampilkan.
         </p>
         <div style="display:flex;gap:0.5rem;justify-content:center;">
-          <button class="btn btn-secondary" onclick="App.closeModal()">Periksa Kembali</button>
-          <button class="btn btn-primary" onclick="App.closeModal();App.submitExam(false);">Ya, Kirim Sekarang</button>
+          <button class="btn btn-secondary" onclick="App.closeModal()"><i class="fa-solid fa-arrow-left"></i> Periksa Kembali</button>
+          <button class="btn btn-primary" onclick="App.closeModal();App.submitExam(false);"><i class="fa-solid fa-check"></i> Ya, Kirim Sekarang</button>
         </div>
       </div>
     `);
@@ -2880,7 +3101,7 @@ const App = {
       });
   },
 
-  // EXAM RESULT, QUESTION REVIEW & EVALUATION SCREEN
+  // EXAM RESULT, QUESTION REVIEW & COMPREHENSIVE EVALUATION SCREEN
   renderExamReview(d) {
     const questions = d.review || [];
     const score = parseFloat(d.score || 0);
@@ -2905,20 +3126,22 @@ const App = {
         <!-- Action bar top -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:0.75rem;">
           <div>
-            <div style="font-size:0.8rem;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:0.5px;">HASIL & EVALUASI CBT</div>
+            <div style="font-size:0.8rem;font-weight:700;color:var(--cyan);text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;gap:0.4rem;">
+              <i class="fa-solid fa-square-poll-vertical"></i> HASIL & EVALUASI CBT
+            </div>
             <h2 style="margin:0;font-size:1.6rem;color:var(--text-main);">${this.escHtml(quizTitle)}</h2>
             <div style="font-size:0.85rem;color:var(--text-muted);">${this.escHtml(courseName)} · Siswa: <b>${this.escHtml(this.currentUser.name)}</b> (${this.currentUser.nip_nis || this.currentUser.username})</div>
           </div>
           <div style="display:flex;gap:0.6rem;">
-            <button class="btn btn-secondary" onclick="window.print()">🖨️ Cetak / Simpan PDF</button>
-            <button class="btn btn-primary" onclick="App.renderAppLayout('dashboard')">🏠 Kembali ke Dashboard</button>
+            <button class="btn btn-secondary" onclick="window.print()"><i class="fa-solid fa-print"></i> Cetak / Simpan PDF</button>
+            <button class="btn btn-primary" onclick="App.renderAppLayout('dashboard')"><i class="fa-solid fa-house"></i> Kembali ke Dashboard</button>
           </div>
         </div>
 
         <!-- Hero Scorecard -->
         <div class="review-score-hero">
           <div style="display:inline-block;padding:0.4rem 1.25rem;border-radius:999px;background:rgba(0,242,254,0.15);color:var(--cyan);font-weight:800;font-size:0.85rem;margin-bottom:1rem;border:1px solid rgba(0,242,254,0.3);">
-            ${isPass ? '🎉 SELAMAT! ANDA LULUS' : '⚠️ PERLU PENINGKATAN / REMEDIAL'}
+            ${isPass ? '<i class="fa-solid fa-award"></i> SELAMAT! ANDA LULUS' : '<i class="fa-solid fa-triangle-exclamation"></i> PERLU PENINGKATAN / REMEDIAL'}
           </div>
           <div style="font-size:0.85rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">NILAI AKHIR ANDA</div>
           <div style="font-family:var(--font-head);font-size:4.5rem;font-weight:900;line-height:1;color:var(--cyan);margin:0.5rem 0;">
@@ -2931,19 +3154,27 @@ const App = {
           <!-- Quick Stats Grid -->
           <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:0.75rem;max-width:650px;margin:0 auto;">
             <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-md);padding:0.75rem;">
-              <div style="font-size:0.72rem;color:var(--text-muted);font-weight:700;">TOTAL SOAL</div>
+              <div style="font-size:0.72rem;color:var(--text-muted);font-weight:700;display:flex;align-items:center;justify-content:center;gap:0.35rem;">
+                <i class="fa-solid fa-list-ol"></i> TOTAL SOAL
+              </div>
               <div style="font-size:1.3rem;font-weight:800;color:var(--text-main);">${totalQ}</div>
             </div>
             <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:var(--r-md);padding:0.75rem;">
-              <div style="font-size:0.72rem;color:#10b981;font-weight:700;">✅ BENAR</div>
+              <div style="font-size:0.72rem;color:#10b981;font-weight:700;display:flex;align-items:center;justify-content:center;gap:0.35rem;">
+                <i class="fa-solid fa-circle-check"></i> BENAR / VALID
+              </div>
               <div style="font-size:1.3rem;font-weight:800;color:#10b981;">${correctQ} Soal</div>
             </div>
             <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:var(--r-md);padding:0.75rem;">
-              <div style="font-size:0.72rem;color:#ef4444;font-weight:700;">❌ SALAH</div>
+              <div style="font-size:0.72rem;color:#ef4444;font-weight:700;display:flex;align-items:center;justify-content:center;gap:0.35rem;">
+                <i class="fa-solid fa-circle-xmark"></i> SALAH / KOSONG
+              </div>
               <div style="font-size:1.3rem;font-weight:800;color:#ef4444;">${wrongQ} Soal</div>
             </div>
             <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--r-md);padding:0.75rem;">
-              <div style="font-size:0.72rem;color:#f59e0b;font-weight:700;">⚠️ PELANGGARAN</div>
+              <div style="font-size:0.72rem;color:#f59e0b;font-weight:700;display:flex;align-items:center;justify-content:center;gap:0.35rem;">
+                <i class="fa-solid fa-triangle-exclamation"></i> PELANGGARAN
+              </div>
               <div style="font-size:1.3rem;font-weight:800;color:#f59e0b;">${violations}x</div>
             </div>
           </div>
@@ -2951,21 +3182,33 @@ const App = {
 
         <!-- Filter bar -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap;gap:0.5rem;">
-          <div style="font-weight:800;font-size:1.15rem;color:var(--text-main);">📋 Pembahasan & Kunci Jawaban</div>
+          <div style="font-weight:800;font-size:1.15rem;color:var(--text-main);display:flex;align-items:center;gap:0.45rem;">
+            <i class="fa-solid fa-book-open"></i> Evaluasi & Pembahasan Mendalam Soal
+          </div>
           <div style="display:flex;gap:0.4rem;">
-            <button class="btn btn-sm btn-outline active" id="btn-filter-all" onclick="App.filterReviewQuestions('all')">Semua (${totalQ})</button>
-            <button class="btn btn-sm btn-outline" id="btn-filter-correct" onclick="App.filterReviewQuestions('correct')">✅ Benar (${correctQ})</button>
-            <button class="btn btn-sm btn-outline" id="btn-filter-wrong" onclick="App.filterReviewQuestions('wrong')">❌ Salah (${wrongQ})</button>
+            <button class="btn btn-sm btn-outline active" id="btn-filter-all" onclick="App.filterReviewQuestions('all')">
+              <i class="fa-solid fa-table-cells"></i> Semua (${totalQ})
+            </button>
+            <button class="btn btn-sm btn-outline" id="btn-filter-correct" onclick="App.filterReviewQuestions('correct')">
+              <i class="fa-solid fa-circle-check" style="color:var(--emerald);"></i> Tepat / Valid (${correctQ})
+            </button>
+            <button class="btn btn-sm btn-outline" id="btn-filter-wrong" onclick="App.filterReviewQuestions('wrong')">
+              <i class="fa-solid fa-circle-xmark" style="color:var(--danger);"></i> Salah / Belum (${wrongQ})
+            </button>
           </div>
         </div>
 
         <!-- Question items list -->
         <div id="review-questions-list">
           ${questions.map((q, idx) => {
+            const isEssay = (q.type === 'essay');
             const isCor = (q.is_correct == 1);
             const userAns = q.selected_option || '—';
             const corAns = q.correct_option || '—';
             const corText = q['option_' + corAns.toLowerCase()] || '';
+            const essayResp = (q.essay_response || '').trim();
+            const essayKey = (q.essay_answer || '').trim();
+            const explanation = (q.explanation || '').trim();
 
             return `
               <div class="review-q-card ${isCor ? 'is-correct' : 'is-wrong'}" data-status="${isCor ? 'correct' : 'wrong'}">
@@ -2974,65 +3217,116 @@ const App = {
                     <span style="font-size:0.85rem;font-weight:800;color:var(--text-main);background:var(--bg-canvas);border:1px solid var(--border);padding:0.25rem 0.6rem;border-radius:var(--r-sm);">
                       SOAL ${idx + 1}
                     </span>
-                    <span class="badge ${isCor ? 'badge-emerald' : 'badge-danger'}">
-                      ${isCor ? '✅ Benar (+10 Poin)' : (userAns === '—' ? '⚪ Tidak Dijawab (0 Poin)' : '❌ Jawaban Salah (0 Poin)')}
+                    <span class="badge ${isEssay ? 'badge-amber' : (isCor ? 'badge-emerald' : 'badge-danger')}">
+                      ${isEssay 
+                        ? (essayResp ? '<i class="fa-solid fa-pen-nib"></i> Jawaban Essai Diserahkan' : '<i class="fa-solid fa-triangle-exclamation"></i> Essai Tidak Diisi')
+                        : (isCor ? '<i class="fa-solid fa-circle-check"></i> Jawaban Benar (+10 Poin)' : (userAns === '—' ? '<i class="fa-regular fa-circle"></i> Tidak Dijawab (0 Poin)' : '<i class="fa-solid fa-circle-xmark"></i> Jawaban Salah (0 Poin)'))}
+                    </span>
+                    <span class="badge badge-muted">
+                      <i class="fa-solid ${isEssay ? 'fa-align-left' : 'fa-list-check'}"></i> ${isEssay ? 'Tipe: Essai / Uraian' : 'Tipe: Pilihan Ganda'}
                     </span>
                   </div>
-                  <div style="font-size:0.8rem;color:var(--text-muted);font-weight:600;">Poin: ${isCor ? q.points || 10 : 0} / ${q.points || 10}</div>
+                  <div style="font-size:0.8rem;color:var(--text-muted);font-weight:600;">
+                    <i class="fa-solid fa-star"></i> Poin: ${isCor ? (q.points || 10) : 0} / ${q.points || 10}
+                  </div>
                 </div>
 
-                <div style="font-size:1rem;font-weight:600;color:var(--text-main);margin-bottom:1rem;line-height:1.5;">
+                <div style="font-size:1.02rem;font-weight:600;color:var(--text-main);margin-bottom:1rem;line-height:1.5;">
                   ${this.escHtml(q.question_text)}
                 </div>
 
-                <!-- Options List -->
-                <div style="margin-bottom:0.75rem;">
-                  ${['A','B','C','D'].map(k => {
-                    const optText = q['option_' + k.toLowerCase()];
-                    if (!optText) return '';
-                    const isKeyCorrect = (k === corAns);
-                    const isUserPick = (k === userAns);
-
-                    let itemClass = 'review-opt-item';
-                    let badgeHtml = '';
-
-                    if (isKeyCorrect) {
-                      itemClass += ' opt-correct';
-                      badgeHtml = `<span class="badge badge-emerald" style="margin-left:auto;flex-shrink:0;">✅ Kunci Jawaban Benar</span>`;
-                    }
-                    if (isUserPick && !isKeyCorrect) {
-                      itemClass += ' opt-student-wrong';
-                      badgeHtml = `<span class="badge badge-danger" style="margin-left:auto;flex-shrink:0;">❌ Jawaban Anda</span>`;
-                    } else if (isUserPick && isKeyCorrect) {
-                      badgeHtml = `<span class="badge badge-emerald" style="margin-left:auto;flex-shrink:0;">✓ Jawaban Anda (Benar)</span>`;
-                    }
-
-                    return `
-                      <div class="${itemClass}">
-                        <div class="review-opt-key">${k}</div>
-                        <div style="flex:1;">${this.escHtml(optText)}</div>
-                        ${badgeHtml}
-                      </div>
-                    `;
-                  }).join('')}
-                </div>
-
-                <!-- Explanation & Evaluation Box -->
-                <div class="review-eval-box ${isCor ? 'eval-correct' : 'eval-wrong'}">
-                  <div style="font-size:1.2rem;line-height:1;">${isCor ? '💡' : '📌'}</div>
-                  <div style="flex:1;">
-                    <div style="font-weight:700;margin-bottom:0.25rem;">
-                      ${isCor ? 'Evaluasi: Jawaban Anda Tepat!' : 'Evaluasi Jawaban:'}
+                ${isEssay ? `
+                  <!-- Essay Student Answer View -->
+                  <div class="essay-student-response-box">
+                    <div style="font-weight:700;font-size:0.85rem;color:var(--text-main);margin-bottom:0.4rem;display:flex;align-items:center;gap:0.4rem;">
+                      <i class="fa-solid fa-user-pen" style="color:var(--cyan);"></i> Jawaban Siswa:
                     </div>
-                    <div style="font-size:0.85rem;color:var(--text-sub);">
-                      ${isCor 
-                        ? `Pilihan Anda <b>(${userAns})</b> sudah sesuai dengan kunci jawaban yang benar.` 
-                        : (userAns === '—' 
-                            ? `Anda belum memilih jawaban pada nomor ini. Kunci jawaban yang benar adalah <b>Opsi ${corAns}: "${this.escHtml(corText)}"</b>.` 
-                            : `Anda memilih <b>Opsi ${userAns}</b>. Jawaban yang tepat seharusnya adalah <b>Opsi ${corAns}: "${this.escHtml(corText)}"</b>.`)}
+                    <div style="white-space:pre-wrap;color:var(--text-main);font-size:0.92rem;background:var(--bg-card);padding:0.85rem 1rem;border-radius:var(--r-sm);border:1px solid var(--border-subtle);line-height:1.6;">
+                      ${essayResp ? this.escHtml(essayResp) : '<span style="color:var(--text-muted);font-style:italic;">(Siswa tidak mengisi jawaban pada soal uraian ini)</span>'}
                     </div>
                   </div>
-                </div>
+
+                  <!-- Essay Teacher Key Rubric -->
+                  ${essayKey ? `
+                    <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:var(--r-md);padding:0.85rem 1.1rem;margin-bottom:0.75rem;">
+                      <div style="font-weight:700;font-size:0.85rem;color:#d97706;margin-bottom:0.35rem;display:flex;align-items:center;gap:0.4rem;">
+                        <i class="fa-solid fa-list-check"></i> Rubrik & Pedoman Kunci Jawaban:
+                      </div>
+                      <div style="font-size:0.88rem;color:var(--text-main);white-space:pre-wrap;line-height:1.6;">${this.escHtml(essayKey)}</div>
+                    </div>
+                  ` : ''}
+
+                  <!-- Essay Conceptual Explanation -->
+                  <div class="review-explanation-card">
+                    <div style="font-weight:700;color:var(--cyan);margin-bottom:0.45rem;display:flex;align-items:center;gap:0.5rem;font-size:0.92rem;">
+                      <i class="fa-solid fa-lightbulb"></i> Pembahasan & Penjelasan Konseptual:
+                    </div>
+                    <div style="color:var(--text-main);font-size:0.88rem;line-height:1.6;margin-bottom:0.5rem;">
+                      ${explanation ? this.escHtml(explanation) : this.generateEssayExplanation(q)}
+                    </div>
+                    <div style="margin-top:0.6rem;padding-top:0.6rem;border-top:1px dashed var(--border-subtle);font-size:0.8rem;color:var(--text-muted);display:flex;align-items:center;gap:0.45rem;">
+                      <i class="fa-solid fa-circle-info"></i> Catatan Evaluasi: Jawaban uraian siswa dinilai secara komprehensif berdasarkan penguasaan materi, struktur nalar, dan ketepatan argumen sesuai pedoman di atas.
+                    </div>
+                  </div>
+                ` : `
+                  <!-- Multiple Choice Options Review -->
+                  <div style="margin-bottom:0.75rem;">
+                    ${['A','B','C','D'].map(k => {
+                      const optText = q['option_' + k.toLowerCase()];
+                      if (!optText) return '';
+                      const isKeyCorrect = (k === corAns);
+                      const isUserPick = (k === userAns);
+
+                      let itemClass = 'review-opt-item';
+                      let badgeHtml = '';
+
+                      if (isKeyCorrect) {
+                        itemClass += ' opt-correct';
+                        badgeHtml = `<span class="badge badge-emerald" style="margin-left:auto;flex-shrink:0;"><i class="fa-solid fa-check"></i> Kunci Jawaban Benar</span>`;
+                      }
+                      if (isUserPick && !isKeyCorrect) {
+                        itemClass += ' opt-student-wrong';
+                        badgeHtml = `<span class="badge badge-danger" style="margin-left:auto;flex-shrink:0;"><i class="fa-solid fa-xmark"></i> Jawaban Anda</span>`;
+                      } else if (isUserPick && isKeyCorrect) {
+                        badgeHtml = `<span class="badge badge-emerald" style="margin-left:auto;flex-shrink:0;"><i class="fa-solid fa-check-double"></i> Jawaban Anda (Tepat)</span>`;
+                      }
+
+                      return `
+                        <div class="${itemClass}">
+                          <div class="review-opt-key">${k}</div>
+                          <div style="flex:1;">${this.escHtml(optText)}</div>
+                          ${badgeHtml}
+                        </div>
+                      `;
+                    }).join('')}
+                  </div>
+
+                  <!-- Multiple Choice Deep Pedagogical Explanation -->
+                  <div class="review-explanation-card">
+                    <div style="font-weight:700;color:${isCor ? 'var(--emerald)' : 'var(--cyan)'};margin-bottom:0.45rem;display:flex;align-items:center;gap:0.5rem;font-size:0.92rem;">
+                      <i class="fa-solid fa-lightbulb"></i> Pembahasan & Penjelasan Soal:
+                    </div>
+                    <div style="color:var(--text-main);font-size:0.88rem;line-height:1.6;margin-bottom:0.6rem;">
+                      ${explanation ? this.escHtml(explanation) : this.generateMCExplanation(q, isCor, userAns, corAns, corText)}
+                    </div>
+                    <div style="background:var(--bg-canvas);border:1px solid var(--border-subtle);border-radius:var(--r-sm);padding:0.65rem 0.9rem;font-size:0.83rem;color:var(--text-sub);">
+                      <div style="display:flex;align-items:flex-start;gap:0.5rem;margin-bottom:0.35rem;">
+                        <i class="fa-solid fa-circle-check" style="color:var(--emerald);margin-top:2px;"></i>
+                        <div><b>Kunci Jawaban:</b> Opsi <b>${corAns}</b> &mdash; <i>"${this.escHtml(corText)}"</i></div>
+                      </div>
+                      <div style="display:flex;align-items:flex-start;gap:0.5rem;">
+                        <i class="fa-solid ${isCor ? 'fa-check' : 'fa-xmark'}" style="color:${isCor ? 'var(--emerald)' : 'var(--danger)'};margin-top:2px;"></i>
+                        <div>
+                          ${isCor 
+                            ? `<span style="color:var(--emerald);font-weight:600;">Evaluasi:</span> Jawaban Anda <b>(Opsi ${userAns})</b> sudah tepat dan mencerminkan pemahaman materi yang baik.`
+                            : (userAns === '—'
+                                ? `<span style="color:var(--amber);font-weight:600;">Evaluasi:</span> Soal ini tidak dijawab saat ujian. Pelajari uraian pembahasan di atas untuk memahami materinya.`
+                                : `<span style="color:var(--danger);font-weight:600;">Evaluasi:</span> Anda memilih <b>Opsi ${userAns}</b> ("${this.escHtml(q['option_' + userAns.toLowerCase()] || '')}"). Opsi ini belum tepat karena tidak memenuhi rumusan konsep yang ditanyakan.`)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                `}
 
               </div>
             `;
@@ -3041,7 +3335,7 @@ const App = {
 
         <div style="text-align:center;margin-top:2rem;">
           <button class="btn btn-primary btn-lg" onclick="App.renderAppLayout('dashboard')">
-            🏠 Selesai & Kembali ke Dashboard
+            <i class="fa-solid fa-house"></i> Selesai & Kembali ke Dashboard
           </button>
         </div>
 
@@ -3107,11 +3401,11 @@ const App = {
         this.setContent(`
           <div class="flex-between mb-3">
             <div>
-              <div class="section-title">🛡️ Laman Pengawasan Ujian Real-Time (Proctoring Center)</div>
+              <div class="section-title"><i class="fa-solid fa-shield-halved"></i> Laman Pengawasan Ujian Real-Time (Proctoring Center)</div>
               <div class="section-sub">Monitoring live camera feed, status koneksi, dan deteksi kecurangan siswa SMKN 1 CIBINONG.</div>
             </div>
             <div class="flex-gap-1">
-              <button class="btn btn-secondary" onclick="App.refreshProctoringGrid()">🔄 Refresh Manual</button>
+              <button class="btn btn-secondary" onclick="App.refreshProctoringGrid()"><i class="fa-solid fa-rotate"></i> Refresh Manual</button>
             </div>
           </div>
 
@@ -3167,7 +3461,7 @@ const App = {
         if (!attempts.length) {
           container.innerHTML = `
             <div class="empty-state card">
-              <div class="empty-icon">🛡️</div>
+              <div class="empty-icon"><i class="fa-solid fa-shield-halved"></i></div>
               <h3 style="margin-bottom:0.25rem;">Belum ada siswa yang sedang mengerjakan ujian</h3>
               <p class="text-muted" style="font-size:0.85rem;">Grid kamera dan status realtime akan otomatis tampil ketika siswa memulai ujian CBT.</p>
             </div>
@@ -3180,8 +3474,8 @@ const App = {
           const isComp = att.status === 'completed';
           const violCount = att.violations_count || 0;
           let statusBadge = `<span class="badge badge-cyan">● Sedang Ujian</span>`;
-          if (isDisq) statusBadge = `<span class="badge badge-danger">🚫 Didiskualifikasi</span>`;
-          else if (isComp) statusBadge = `<span class="badge badge-green">✅ Selesai</span>`;
+          if (isDisq) statusBadge = `<span class="badge badge-danger"><i class="fa-solid fa-ban"></i> Didiskualifikasi</span>`;
+          else if (isComp) statusBadge = `<span class="badge badge-green"><i class="fa-solid fa-circle-check"></i> Selesai</span>`;
 
           let violBadge = `<span class="badge badge-green">Violations: ${violCount}/3</span>`;
           if (violCount === 1 || violCount === 2) violBadge = `<span class="badge badge-amber">Violations: ${violCount}/3</span>`;
@@ -3190,7 +3484,7 @@ const App = {
           const snapSrc = att.latest_snapshot ? att.latest_snapshot : '../cbt/images/login-hero.jpg';
           const snapTime = att.latest_snapshot_time ? new Date(att.latest_snapshot_time).toLocaleTimeString('id-ID') : 'Belum ada feed';
 
-          const logsHtml = (att.cheat_logs || []).map(l => `<div style="font-size:0.7rem;color:var(--danger);margin-top:2px;">⚠️ ${(l.created_at || '').substring(11,19)} - ${this.escHtml(l.details)}</div>`).join('');
+          const logsHtml = (att.cheat_logs || []).map(l => `<div style="font-size:0.7rem;color:var(--danger);margin-top:2px;"><i class="fa-solid fa-triangle-exclamation"></i> ${(l.created_at || '').substring(11,19)} - ${this.escHtml(l.details)}</div>`).join('');
 
           return `
             <div class="card" style="padding:1rem;border:1px solid ${isDisq ? 'var(--danger)' : 'var(--border)'};position:relative;background:var(--bg-card);">
@@ -3198,7 +3492,7 @@ const App = {
                 <!-- Snapshot Thumbnail -->
                 <div style="width:110px;height:85px;background:#000;border-radius:var(--r-md);overflow:hidden;position:relative;flex-shrink:0;border:1px solid var(--border);">
                   <img src="${snapSrc}" style="width:100%;height:100%;object-fit:cover;" alt="Webcam Feed">
-                  <div style="position:absolute;bottom:3px;right:3px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.6rem;padding:1px 4px;border-radius:3px;">📷 ${snapTime}</div>
+                  <div style="position:absolute;bottom:3px;right:3px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.6rem;padding:1px 4px;border-radius:3px;"><i class="fa-solid fa-camera"></i> ${snapTime}</div>
                   <div style="position:absolute;top:3px;left:3px;width:7px;height:7px;border-radius:50%;background:${isDisq ? 'var(--danger)' : 'var(--emerald)'};"></div>
                 </div>
 
@@ -3217,7 +3511,7 @@ const App = {
               ${logsHtml ? `<div style="background:var(--danger-dim);border:1px solid rgba(239,68,68,0.2);padding:0.4rem 0.6rem;border-radius:var(--r-sm);margin-top:0.75rem;">${logsHtml}</div>` : ''}
 
               <div style="display:flex;gap:0.5rem;margin-top:0.75rem;padding-top:0.6rem;border-top:1px solid var(--border-subtle);">
-                <button class="btn btn-secondary btn-sm" style="flex:1;justify-content:center;" onclick="App.resetStudentExam(${att.id})">🔄 Reset Ujian</button>
+                <button class="btn btn-secondary btn-sm" style="flex:1;justify-content:center;" onclick="App.resetStudentExam(${att.id})"><i class="fa-solid fa-rotate-left"></i> Reset Ujian</button>
               </div>
             </div>
           `;
@@ -3248,7 +3542,7 @@ const App = {
 
         this.setContent(`
           <div class="mb-3">
-            <div class="section-title">📊 Rekap Absensi Siswa</div>
+            <div class="section-title"><i class="fa-solid fa-chart-column"></i> Rekap Absensi Siswa</div>
             <div class="section-sub">Laporan rekapitulasi kehadiran bulanan dan semesteran SMKN 1 CIBINONG.</div>
           </div>
 
@@ -3264,8 +3558,8 @@ const App = {
             <div class="filter-group">
               <span class="filter-label">Mode Rekap</span>
               <div class="rekap-mode-tabs">
-                <div class="mode-tab ${this.rekapMode === 'monthly' ? 'active' : ''}" onclick="App.setRekapMode('monthly')">📅 Bulanan</div>
-                <div class="mode-tab ${this.rekapMode === 'semester' ? 'active' : ''}" onclick="App.setRekapMode('semester')">📆 Semester</div>
+                <div class="mode-tab ${this.rekapMode === 'monthly' ? 'active' : ''}" onclick="App.setRekapMode('monthly')"><i class="fa-solid fa-calendar-days"></i> Bulanan</div>
+                <div class="mode-tab ${this.rekapMode === 'semester' ? 'active' : ''}" onclick="App.setRekapMode('semester')"><i class="fa-solid fa-calendar-days"></i> Semester</div>
               </div>
             </div>
 
@@ -3303,13 +3597,13 @@ const App = {
             </div>
 
             <div style="align-self:flex-end;">
-              <button class="btn btn-primary" onclick="App.fetchRekap()">🔍 Tampilkan Rekap</button>
+              <button class="btn btn-primary" onclick="App.fetchRekap()"><i class="fa-solid fa-magnifying-glass"></i> Tampilkan Rekap</button>
             </div>
           </div>
 
           <!-- Results Area -->
           <div id="rekap-results">
-            <div class="card"><div class="empty-state"><div class="empty-icon">📊</div><p>Pilih filter dan klik "Tampilkan Rekap" untuk memuat data kehadiran.</p></div></div>
+            <div class="card"><div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-chart-column"></i></div><p>Pilih filter dan klik "Tampilkan Rekap" untuk memuat data kehadiran.</p></div></div>
           </div>
         `);
 
@@ -3427,24 +3721,24 @@ const App = {
           <!-- Charts -->
           <div class="chart-row">
             <div class="chart-card">
-              <div class="card-title" style="margin-bottom:0.75rem;">📊 Tren Kehadiran per Bulan</div>
+              <div class="card-title" style="margin-bottom:0.75rem;"><i class="fa-solid fa-chart-line"></i> Tren Kehadiran per Bulan</div>
               <canvas id="trend-chart" height="180"></canvas>
             </div>
             <div class="chart-card">
-              <div class="card-title" style="margin-bottom:0.75rem;">🍩 Komposisi Kehadiran</div>
+              <div class="card-title" style="margin-bottom:0.75rem;"><i class="fa-solid fa-chart-pie"></i> Komposisi Kehadiran</div>
               <canvas id="donut-chart" height="180"></canvas>
             </div>
           </div>
 
           <!-- Export Buttons -->
           <div class="rekap-export-bar">
-            <button class="btn btn-secondary" onclick="App.printRekap()">🖨️ Cetak PDF</button>
-            <button class="btn btn-success" onclick="App.exportExcel()">📥 Export Excel (.xlsx)</button>
+            <button class="btn btn-secondary" onclick="App.printRekap()"><i class="fa-solid fa-print"></i> Cetak PDF</button>
+            <button class="btn btn-success" onclick="App.exportExcel()"><i class="fa-solid fa-file-excel"></i> Export Excel (.xlsx)</button>
           </div>
 
           <!-- Data Table -->
           <div class="card">
-            <div class="card-title" style="margin-bottom:0.75rem;">📋 Tabel Rekap Kehadiran Siswa</div>
+            <div class="card-title" style="margin-bottom:0.75rem;"><i class="fa-solid fa-clipboard-list"></i> Tabel Rekap Kehadiran Siswa</div>
             <div class="table-wrapper">
               <table class="data-table" id="rekap-table">
                 <thead>
@@ -3556,11 +3850,11 @@ const App = {
               <td class="td-mono" style="font-size:0.78rem;">${g.finished_at ? g.finished_at.split(' ')[0] : '—'}</td>
             </tr>
           `;
-        }).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">🏆</div><p>Belum ada data nilai ujian.</p></div></td></tr>`;
+        }).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-trophy"></i></div><p>Belum ada data nilai ujian.</p></div></td></tr>`;
 
         this.setContent(`
           <div class="mb-3">
-            <div class="section-title">🏆 Daftar Nilai Ujian CBT</div>
+            <div class="section-title"><i class="fa-solid fa-trophy"></i> Daftar Nilai Ujian CBT</div>
             <div class="section-sub">Rekap nilai ujian CBT yang telah diselesaikan.</div>
           </div>
           <div class="card">
@@ -3593,7 +3887,7 @@ const App = {
       .then(([ud, cd]) => {
         const users   = ud.users   || [];
         const classes = cd.classes || [];
-        const roleMap = { admin: '🛡️ Admin', guru: '👨‍🏫 Guru', siswa: '🎓 Siswa' };
+        const roleMap = { admin: '<i class="fa-solid fa-shield-halved"></i> Admin', guru: '<i class="fa-solid fa-chalkboard-user"></i> Guru', siswa: '<i class="fa-solid fa-graduation-cap"></i> Siswa' };
 
         const rows = users.map((u, i) => `
           <tr>
@@ -3607,7 +3901,7 @@ const App = {
             <td><span class="badge ${u.role === 'admin' ? 'badge-cyan' : u.role === 'guru' ? 'badge-blue' : 'badge-muted'}">${roleMap[u.role] || u.role}</span></td>
             <td>${u.class_name ? `<span class="badge badge-muted">${this.escHtml(u.class_name)}</span>` : '—'}</td>
             <td>
-              ${u.username !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="App.deleteUser(${u.id})">🗑️</button>` : '<span class="text-muted">—</span>'}
+              ${u.username !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="App.deleteUser(${u.id})"><i class="fa-solid fa-trash"></i></button>` : '<span class="text-muted">—</span>'}
             </td>
           </tr>
         `).join('');
@@ -3617,10 +3911,10 @@ const App = {
         this.setContent(`
           <div class="flex-between mb-3">
             <div>
-              <div class="section-title">👥 Manajemen Pengguna</div>
+              <div class="section-title"><i class="fa-solid fa-users"></i> Manajemen Pengguna</div>
               <div class="section-sub">Kelola akun Siswa, Guru, dan Administrator SMKN 1 CIBINONG.</div>
             </div>
-            <button class="btn btn-primary" onclick="App.openAddUserModal()">➕ Tambah Pengguna</button>
+            <button class="btn btn-primary" onclick="App.openAddUserModal()"><i class="fa-solid fa-user-plus"></i> Tambah Pengguna</button>
           </div>
 
           <div class="card">
@@ -3645,9 +3939,9 @@ const App = {
         <div class="form-group mb-2">
           <label class="form-label">Role</label>
           <select id="u-role" class="form-control" onchange="App.toggleClassField()">
-            <option value="siswa">🎓 Siswa</option>
-            <option value="guru">👨‍🏫 Guru</option>
-            <option value="admin">🛡️ Admin</option>
+            <option value="siswa">Siswa</option>
+            <option value="guru">Guru</option>
+            <option value="admin">Admin</option>
           </select>
         </div>
         <div class="form-group mb-2" id="u-class-group">
@@ -3716,18 +4010,18 @@ const App = {
     this.setContent(`
       <div class="flex-between mb-3">
         <div>
-          <div class="section-title">📢 Pengumuman & Informasi Sekolah</div>
+          <div class="section-title"><i class="fa-solid fa-bullhorn"></i> Pengumuman & Informasi Sekolah</div>
           <div class="section-sub">Papan informasi dan pengumuman resmi SMKN 1 CIBINONG.</div>
         </div>
-        ${isStaff ? `<button class="btn btn-primary" onclick="App.showAnnForm()">➕ Buat Pengumuman</button>` : ''}
+        ${isStaff ? `<button class="btn btn-primary" onclick="App.showAnnForm()"><i class="fa-solid fa-plus"></i> Buat Pengumuman</button>` : ''}
       </div>
 
       <div class="card mb-3" style="padding:1rem;">
         <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
           <div style="display:flex;gap:0.35rem;">
-            <button class="btn btn-sm ${this._annFilterTarget === 'all' ? 'btn-primary' : 'btn-secondary'}" onclick="App.filterAnnouncements('all')">🌐 Semua Target</button>
-            <button class="btn btn-sm ${this._annFilterTarget === 'siswa' ? 'btn-primary' : 'btn-secondary'}" onclick="App.filterAnnouncements('siswa')">🎓 Siswa</button>
-            <button class="btn btn-sm ${this._annFilterTarget === 'guru' ? 'btn-primary' : 'btn-secondary'}" onclick="App.filterAnnouncements('guru')">👨‍🏫 Guru</button>
+            <button class="btn btn-sm ${this._annFilterTarget === 'all' ? 'btn-primary' : 'btn-secondary'}" onclick="App.filterAnnouncements('all')"><i class="fa-solid fa-globe"></i> Semua Target</button>
+            <button class="btn btn-sm ${this._annFilterTarget === 'siswa' ? 'btn-primary' : 'btn-secondary'}" onclick="App.filterAnnouncements('siswa')"><i class="fa-solid fa-graduation-cap"></i> Siswa</button>
+            <button class="btn btn-sm ${this._annFilterTarget === 'guru' ? 'btn-primary' : 'btn-secondary'}" onclick="App.filterAnnouncements('guru')"><i class="fa-solid fa-chalkboard-user"></i> Guru</button>
           </div>
         </div>
       </div>
@@ -3758,7 +4052,7 @@ const App = {
 
         const isStaff = ['admin', 'guru'].includes(this.currentUser?.role);
         if (!items.length) {
-          el.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">📢</div><p>Belum ada pengumuman terdaftar.</p></div>`;
+          el.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon"><i class="fa-solid fa-bullhorn"></i></div><p>Belum ada pengumuman terdaftar.</p></div>`;
           return;
         }
 
@@ -3766,23 +4060,23 @@ const App = {
           <div class="card" style="position:relative; ${a.is_pinned ? 'border-left: 4px solid var(--amber);' : ''}">
             <div class="flex-between mb-2">
               <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
-                ${a.is_pinned ? '<span class="badge badge-amber">📌 Disematkan</span>' : ''}
+                ${a.is_pinned ? '<span class="badge badge-amber"><i class="fa-solid fa-thumbtack"></i> Disematkan</span>' : ''}
                 <span class="badge badge-${a.target === 'siswa' ? 'cyan' : a.target === 'guru' ? 'amber' : 'blue'}">
-                  🎯 Target: ${a.target === 'all' ? 'Semua' : (a.target === 'siswa' ? 'Siswa' : 'Guru')}
+                  <i class="fa-solid fa-bullseye"></i> Target: ${a.target === 'all' ? 'Semua' : (a.target === 'siswa' ? 'Siswa' : 'Guru')}
                 </span>
               </div>
               ${isStaff ? `
                 <div style="display:flex;gap:0.35rem;">
-                  <button class="btn btn-secondary btn-sm" onclick='App.showAnnForm(${JSON.stringify(a).replace(/'/g, "&#39;")})' title="Edit Pengumuman">✏️ Edit</button>
-                  <button class="btn btn-danger btn-sm" onclick="App.deleteAnn(${a.id})" title="Hapus Pengumuman">🗑️ Hapus</button>
+                  <button class="btn btn-secondary btn-sm" onclick='App.showAnnForm(${JSON.stringify(a).replace(/'/g, "&#39;")})' title="Edit Pengumuman"><i class="fa-solid fa-pen"></i> Edit</button>
+                  <button class="btn btn-danger btn-sm" onclick="App.deleteAnn(${a.id})" title="Hapus Pengumuman"><i class="fa-solid fa-trash"></i> Hapus</button>
                 </div>
               ` : ''}
             </div>
             <h3 style="font-size:1.1rem;margin:0.25rem 0 0.5rem;color:var(--text-main);">${this.escHtml(a.title)}</h3>
             <p style="font-size:0.88rem;color:var(--text-sub);line-height:1.65;white-space:pre-line;margin-bottom:1rem;">${this.escHtml(a.content)}</p>
             <div style="font-size:0.78rem;color:var(--text-muted);border-top:1px solid var(--border);padding-top:0.6rem;display:flex;justify-content:space-between;">
-              <span>✍️ Oleh: <b>${this.escHtml(a.author_name)}</b></span>
-              <span>📅 ${new Date(a.created_at).toLocaleString('id-ID', {dateStyle:'medium', timeStyle:'short'})}</span>
+              <span><i class="fa-solid fa-pen-fancy"></i> Oleh: <b>${this.escHtml(a.author_name)}</b></span>
+              <span><i class="fa-solid fa-calendar-days"></i> ${new Date(a.created_at).toLocaleString('id-ID', {dateStyle:'medium', timeStyle:'short'})}</span>
             </div>
           </div>
         `).join('');
@@ -3812,7 +4106,7 @@ const App = {
           </div>
           <div class="form-group" style="display:flex;align-items:center;gap:0.5rem;padding-top:1.5rem;">
             <input type="checkbox" id="ann-pinned" ${existing?.is_pinned ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer;">
-            <label for="ann-pinned" class="form-label" style="margin:0;cursor:pointer;">📌 Sematkan Pengumuman (Pin to top)</label>
+            <label for="ann-pinned" class="form-label" style="margin:0;cursor:pointer;"><i class="fa-solid fa-thumbtack"></i> Sematkan Pengumuman (Pin to top)</label>
           </div>
         </div>
         <div class="flex-end flex-gap-1">
@@ -3844,7 +4138,7 @@ const App = {
         if (res.success) {
           this.closeModal();
           this._refreshAnnList();
-          this._toast(id ? '✅ Pengumuman diperbarui.' : '✅ Pengumuman baru dipublikasikan!');
+          this._toast(id ? 'Pengumuman diperbarui.' : 'Pengumuman baru dipublikasikan!');
         } else alert(res.message || 'Gagal menyimpan.');
       });
   },
@@ -3860,7 +4154,7 @@ const App = {
       .then(res => {
         if (res.success) {
           this._refreshAnnList();
-          this._toast('✅ Pengumuman dihapus.');
+          this._toast('Pengumuman dihapus.');
         } else alert(res.message);
       });
   },
@@ -3876,7 +4170,7 @@ const App = {
       // Student: show own grades
       this.setContent(`
         <div class="hero-banner" style="padding:1.5rem 2rem;margin-bottom:1.5rem;">
-          <div><div class="hero-badge">🏆 Penilaian Akademik</div>
+          <div><div class="hero-badge"><i class="fa-solid fa-trophy"></i> Penilaian Akademik</div>
             <div class="hero-title" style="font-size:1.4rem;">Daftar Nilai Saya</div>
             <div class="hero-sub">Bobot: Tugas 30% · UTS 20% · UAS/CBT 30% · Kehadiran 20%</div>
           </div>
@@ -3891,7 +4185,7 @@ const App = {
           const el = document.getElementById('grades-content');
           if (!el) return;
           const rows = res.data || [];
-          if (!rows.length) { el.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><p>Belum ada nilai.</p></div>`; return; }
+          if (!rows.length) { el.innerHTML = `<div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><p>Belum ada nilai.</p></div>`; return; }
           el.innerHTML = `
             <table class="table" style="width:100%;">
               <thead><tr>
@@ -3905,7 +4199,7 @@ const App = {
               </tr></thead>
               <tbody>${rows.map(r => `
                 <tr>
-                  <td>${r.icon || '📚'} ${this.escHtml(r.course_name)}</td>
+                  <td>${r.icon && r.icon.startsWith('fa-') ? `<i class="fa-solid ${r.icon}"></i>` : `<i class="fa-solid fa-book"></i>`} ${this.escHtml(r.course_name)}</td>
                   <td style="text-align:center;">${r.nilai_tugas ?? '–'}</td>
                   <td style="text-align:center;">${r.nilai_uts ?? '–'}</td>
                   <td style="text-align:center;">${r.nilai_uas ?? '–'}</td>
@@ -3923,11 +4217,11 @@ const App = {
     // Staff: class + course picker + table
     this.setContent(`
       <div class="hero-banner" style="padding:1.5rem 2rem;margin-bottom:1.5rem;">
-        <div><div class="hero-badge">🏆 Penilaian Akademik</div>
+        <div><div class="hero-badge"><i class="fa-solid fa-trophy"></i> Penilaian Akademik</div>
           <div class="hero-title" style="font-size:1.4rem;">Manajemen Daftar Nilai</div>
           <div class="hero-sub">Bobot: Tugas 30% · UTS 20% · UAS/CBT 30% · Kehadiran 20%</div>
         </div>
-        <button class="btn btn-outline" style="margin-left:auto;" onclick="App.exportGradesCSV()">📥 ${this.t('export_csv')}</button>
+        <button class="btn btn-outline" style="margin-left:auto;" onclick="App.exportGradesCSV()"><i class="fa-solid fa-file-csv"></i> ${this.t('export_csv')}</button>
       </div>
       <div class="card" style="margin-bottom:1rem;">
         <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;">
@@ -3979,7 +4273,7 @@ const App = {
       .then(r => r.json())
       .then(res => {
         const rows = res.data || [];
-        if (!rows.length) { area.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><p>${this.t('no_data')}</p></div>`; return; }
+        if (!rows.length) { area.innerHTML = `<div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><p>${this.t('no_data')}</p></div>`; return; }
         area.innerHTML = `
           <div style="overflow-x:auto;">
             <table class="table" style="width:100%;min-width:800px;">
@@ -4002,7 +4296,7 @@ const App = {
                   <td style="text-align:center;">${r.nilai_hadir ?? '–'}</td>
                   <td style="text-align:center;font-weight:700;color:var(--accent);">${r.nilai_akhir ?? '–'}</td>
                   <td style="text-align:center;"><span class="badge badge-${r.predikat === 'A' ? 'cyan' : r.predikat === 'B' ? 'blue' : r.predikat === 'C' ? 'amber' : 'danger'}">${r.predikat || '–'}</span></td>
-                  <td><button class="btn btn-outline" style="font-size:0.75rem;padding:0.25rem 0.6rem;" onclick="App.editGrade(${JSON.stringify(r)})">✏️</button></td>
+                  <td><button class="btn btn-outline" style="font-size:0.75rem;padding:0.25rem 0.6rem;" onclick="App.editGrade(${JSON.stringify(r)})"><i class="fa-solid fa-pen"></i></button></td>
                 </tr>`).join('')}
               </tbody>
             </table>
@@ -4088,7 +4382,7 @@ const App = {
     this.setContent(`
       <div class="hero-banner" style="padding:1.5rem 2rem;margin-bottom:1.5rem;">
         <div>
-          <div class="hero-badge">📋 Presensi Harian & Mata Pelajaran</div>
+          <div class="hero-badge"><i class="fa-solid fa-clipboard-user"></i> Presensi Harian & Mata Pelajaran</div>
           <div class="hero-title" style="font-size:1.4rem;">Input Presensi Siswa</div>
           <div class="hero-sub">Kelola dan simpan daftar kehadiran siswa secara akurat per kelas, mata pelajaran, dan tanggal.</div>
         </div>
@@ -4108,24 +4402,24 @@ const App = {
             <label class="form-label" style="font-weight:700;">Tanggal Presensi *</label>
             <input type="date" class="form-control filter-select" id="att-date" value="${new Date().toISOString().split('T')[0]}" onchange="App.loadAttList()">
           </div>
-          <button class="btn btn-outline" style="padding:0.55rem 1rem;" onclick="App.markAllPresent()">✅ ${this.t('mark_all_present')}</button>
-          <button class="btn btn-primary" style="padding:0.55rem 1.25rem;" onclick="App.saveAttBulk()">💾 Simpan Presensi</button>
+          <button class="btn btn-outline" style="padding:0.55rem 1rem;" onclick="App.markAllPresent()"><i class="fa-solid fa-circle-check"></i> ${this.t('mark_all_present')}</button>
+          <button class="btn btn-primary" style="padding:0.55rem 1.25rem;" onclick="App.saveAttBulk()"><i class="fa-solid fa-floppy-disk"></i> Simpan Presensi</button>
         </div>
       </div>
 
       <!-- Live Summary Bar -->
       <div id="att-summary-bar" class="att-summary-strip" style="display:none;">
         <span style="font-size:0.85rem;font-weight:800;color:var(--text-main);margin-right:0.5rem;">Ringkasan:</span>
-        <div class="att-stat-pill" style="color:var(--text-main);">👥 Total: <b id="att-cnt-total">0</b></div>
-        <div class="att-stat-pill" style="color:#10b981;border-color:rgba(16,185,129,0.3);">🟢 Hadir: <b id="att-cnt-hadir">0</b></div>
-        <div class="att-stat-pill" style="color:#3b82f6;border-color:rgba(59,130,246,0.3);">🔵 Izin: <b id="att-cnt-izin">0</b></div>
-        <div class="att-stat-pill" style="color:#f59e0b;border-color:rgba(245,158,11,0.3);">🟡 Sakit: <b id="att-cnt-sakit">0</b></div>
-        <div class="att-stat-pill" style="color:#ef4444;border-color:rgba(239,68,68,0.3);">🔴 Alpa: <b id="att-cnt-alpa">0</b></div>
+        <div class="att-stat-pill" style="color:var(--text-main);"><i class="fa-solid fa-users"></i> Total: <b id="att-cnt-total">0</b></div>
+        <div class="att-stat-pill" style="color:#10b981;border-color:rgba(16,185,129,0.3);"><i class="fa-solid fa-circle" style="color:#10b981;font-size:0.75rem;"></i> Hadir: <b id="att-cnt-hadir">0</b></div>
+        <div class="att-stat-pill" style="color:#3b82f6;border-color:rgba(59,130,246,0.3);"><i class="fa-solid fa-circle" style="color:#3b82f6;font-size:0.75rem;"></i> Izin: <b id="att-cnt-izin">0</b></div>
+        <div class="att-stat-pill" style="color:#f59e0b;border-color:rgba(245,158,11,0.3);"><i class="fa-solid fa-circle" style="color:#f59e0b;font-size:0.75rem;"></i> Sakit: <b id="att-cnt-sakit">0</b></div>
+        <div class="att-stat-pill" style="color:#ef4444;border-color:rgba(239,68,68,0.3);"><i class="fa-solid fa-circle" style="color:#ef4444;font-size:0.75rem;"></i> Alpa: <b id="att-cnt-alpa">0</b></div>
         <div class="att-stat-pill" style="color:var(--text-muted);">⏱️ Terlambat: <b id="att-cnt-late">0</b></div>
       </div>
 
       <div id="att-list-area" class="card">
-        <div class="empty-state"><div class="empty-icon">📋</div><p>Memuat daftar kelas...</p></div>
+        <div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-clipboard-list"></i></div><p>Memuat daftar kelas...</p></div>
       </div>
     `);
 
@@ -4156,7 +4450,7 @@ const App = {
         this.loadAttList();
       } else {
         const area = document.getElementById('att-list-area');
-        if (area) area.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p>Belum ada data kelas terdaftar.</p></div>`;
+        if (area) area.innerHTML = `<div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-clipboard-list"></i></div><p>Belum ada data kelas terdaftar.</p></div>`;
       }
     });
   },
@@ -4180,7 +4474,7 @@ const App = {
         if (!area) return;
         const students = res.data || res.students || [];
         if (!students.length) {
-          area.innerHTML = `<div class="empty-state"><div class="empty-icon">👤</div><p>Tidak ada siswa terdaftar di kelas ini.</p></div>`;
+          area.innerHTML = `<div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-user"></i></div><p>Tidak ada siswa terdaftar di kelas ini.</p></div>`;
           return;
         }
 
@@ -4241,7 +4535,7 @@ const App = {
         this.updateAttSummaryCounts();
       })
       .catch(() => {
-        if (area) area.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Gagal memuat data presensi.</p></div>`;
+        if (area) area.innerHTML = `<div class="empty-state"><div class="empty-icon"><i class="fa-solid fa-triangle-exclamation"></i></div><p>Gagal memuat data presensi.</p></div>`;
       });
   },
 
@@ -4312,7 +4606,7 @@ const App = {
       .then(res => {
         if (res.success) {
           this.loadAttList();
-          this._toast(`✅ ${res.message || res.marked + ' siswa ditandai hadir.'}`);
+          this._toast(`${res.message || res.marked + ' siswa ditandai hadir.'}`);
         } else {
           alert(res.message || 'Gagal menandai hadir.');
         }
@@ -4350,7 +4644,7 @@ const App = {
       .then(r => r.json())
       .then(res => {
         if (res.success) {
-          this._toast(`✅ ${res.message || 'Presensi berhasil disimpan.'}`);
+          this._toast(`${res.message || 'Presensi berhasil disimpan.'}`);
           this.loadAttList();
         } else {
           alert(res.message || 'Gagal menyimpan presensi.');
@@ -4367,7 +4661,7 @@ const App = {
     fetch(`api/quizzes.php?action=reset_attempt&user_id=${userId}&quiz_id=${quizId}`)
       .then(r => r.json())
       .then(res => {
-        if (res.success) this._toast(`✅ Ujian ${studentName} berhasil direset.`);
+        if (res.success) this._toast(`Ujian ${studentName} berhasil direset.`);
         else alert(res.message || 'Gagal reset.');
       });
   },
@@ -4383,8 +4677,10 @@ const App = {
     t.style.cssText = `position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;padding:0.85rem 1.4rem;
       background:${type === 'success' ? 'var(--emerald)' : 'var(--danger)'};
       color:#fff;border-radius:var(--r-lg);font-size:0.88rem;font-weight:600;
-      box-shadow:0 6px 24px rgba(0,0,0,0.25);animation:fadeInUp 0.3s ease;`;
-    t.textContent = msg;
+      box-shadow:0 6px 24px rgba(0,0,0,0.25);animation:fadeInUp 0.3s ease;display:flex;align-items:center;gap:0.5rem;`;
+    const cleanMsg = String(msg).replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\s]+/u, '');
+    const iconClass = type === 'success' ? 'fa-circle-check' : 'fa-circle-xmark';
+    t.innerHTML = `<i class="fa-solid ${iconClass}"></i> <span>${cleanMsg}</span>`;
     document.body.appendChild(t);
     setTimeout(() => t.remove(), 3500);
   },

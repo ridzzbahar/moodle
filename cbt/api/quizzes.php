@@ -18,14 +18,15 @@ if ($method === 'GET') {
 
     if ($action === 'list') {
         if ($role === 'siswa') {
-            // Get student's major
-            $uStmt = $pdo->prepare("SELECT major FROM users WHERE id = ?");
+            // Get student's major and class_id
+            $uStmt = $pdo->prepare("SELECT major, class_id FROM users WHERE id = ?");
             $uStmt->execute([$uid]);
             $userRow = $uStmt->fetch();
-            $major   = $userRow['major'] ?? 'Umum';
+            $major   = trim($userRow['major'] ?? 'Umum');
+            $classId = !empty($userRow['class_id']) ? (int)$userRow['class_id'] : null;
 
-            $q = $pdo->prepare("
-                SELECT qz.*, c.course_name, c.icon,
+            $sql = "
+                SELECT qz.*, c.course_name, c.icon, c.class_id AS course_class_id, c.major AS course_major,
                   (SELECT COUNT(*) FROM questions qq WHERE qq.quiz_id = qz.id) AS total_questions,
                   (SELECT COUNT(*) FROM questions qq WHERE qq.quiz_id = qz.id) AS question_count,
                   (SELECT ea.status FROM exam_attempts ea WHERE ea.quiz_id = qz.id AND ea.user_id = ? ORDER BY ea.started_at DESC LIMIT 1) AS attempt_status,
@@ -34,10 +35,21 @@ if ($method === 'GET') {
                 FROM quizzes qz
                 LEFT JOIN courses c ON qz.course_id = c.id
                 WHERE qz.status = 'active'
-                  AND (c.major = 'Umum' OR c.major = ? OR c.major IS NULL OR qz.course_id IS NULL)
+                  AND (c.major = 'Umum' OR c.major = ? OR c.major IS NULL OR c.major = '' OR qz.course_id IS NULL)
                   AND (qz.release_date IS NULL OR qz.release_date <= CURDATE())
-                ORDER BY qz.created_at DESC");
-            $q->execute([$uid, $uid, $uid, $major]);
+            ";
+            $params = [$uid, $uid, $uid, $major];
+
+            if ($classId) {
+                $sql .= " AND (c.class_id = ? OR c.class_id IS NULL OR qz.course_id IS NULL)";
+                $params[] = $classId;
+            } else {
+                $sql .= " AND (c.class_id IS NULL OR qz.course_id IS NULL)";
+            }
+
+            $sql .= " ORDER BY qz.created_at DESC";
+            $q = $pdo->prepare($sql);
+            $q->execute($params);
             $list = $q->fetchAll();
 
             foreach ($list as &$item) {

@@ -23,12 +23,12 @@ if ($method === 'GET') {
     }
 
     if (in_array($role, ['guru', 'admin'])) {
-        // Teachers/Admins see all details including correct_option & essay_answer
-        $stmt = $pdo->prepare("SELECT id, quiz_id, type, question_text, option_a, option_b, option_c, option_d, correct_option, essay_answer, points, created_at FROM questions WHERE quiz_id = ? ORDER BY id ASC");
+        // Teachers/Admins see all details including correct_option, essay_answer & explanation
+        $stmt = $pdo->prepare("SELECT id, quiz_id, type, question_text, option_a, option_b, option_c, option_d, correct_option, essay_answer, points, explanation, created_at FROM questions WHERE quiz_id = ? ORDER BY id ASC");
         $stmt->execute([$quiz_id]);
         $questions = $stmt->fetchAll();
     } else {
-        // Students do NOT see correct_option or essay_answer
+        // Students do NOT see correct_option or essay_answer during taking the quiz
         $stmt = $pdo->prepare("SELECT id, quiz_id, type, question_text, option_a, option_b, option_c, option_d, points FROM questions WHERE quiz_id = ? ORDER BY id ASC");
         $stmt->execute([$quiz_id]);
         $questions = $stmt->fetchAll();
@@ -54,6 +54,7 @@ if ($method === 'POST') {
         $type = in_array($data['type'] ?? '', ['multiple_choice', 'essay']) ? $data['type'] : 'multiple_choice';
         $question_text = trim($data['question_text'] ?? '');
         $points = max(1, intval($data['points'] ?? 1));
+        $explanation = trim($data['explanation'] ?? '');
 
         if ($quiz_id <= 0 || empty($question_text)) {
             echo json_encode(['success' => false, 'message' => 'Teks soal wajib diisi.']);
@@ -77,18 +78,18 @@ if ($method === 'POST') {
             }
 
             $stmt = $pdo->prepare("
-                INSERT INTO questions (quiz_id, type, question_text, option_a, option_b, option_c, option_d, correct_option, points)
-                VALUES (?, 'multiple_choice', ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO questions (quiz_id, type, question_text, option_a, option_b, option_c, option_d, correct_option, points, explanation)
+                VALUES (?, 'multiple_choice', ?, ?, ?, ?, ?, ?, ?, ?)
             ");
-            $stmt->execute([$quiz_id, $question_text, $option_a, $option_b, $option_c, $option_d, $correct_option, $points]);
+            $stmt->execute([$quiz_id, $question_text, $option_a, $option_b, $option_c, $option_d, $correct_option, $points, $explanation]);
         } else {
             // Essay
             $essay_answer = trim($data['essay_answer'] ?? '');
             $stmt = $pdo->prepare("
-                INSERT INTO questions (quiz_id, type, question_text, essay_answer, points)
-                VALUES (?, 'essay', ?, ?, ?)
+                INSERT INTO questions (quiz_id, type, question_text, essay_answer, points, explanation)
+                VALUES (?, 'essay', ?, ?, ?, ?)
             ");
-            $stmt->execute([$quiz_id, $question_text, $essay_answer, $points]);
+            $stmt->execute([$quiz_id, $question_text, $essay_answer, $points, $explanation]);
         }
 
         echo json_encode(['success' => true, 'message' => 'Soal berhasil ditambahkan!', 'id' => $pdo->lastInsertId()]);
@@ -100,6 +101,7 @@ if ($method === 'POST') {
         $type = in_array($data['type'] ?? '', ['multiple_choice', 'essay']) ? $data['type'] : 'multiple_choice';
         $question_text = trim($data['question_text'] ?? '');
         $points = max(1, intval($data['points'] ?? 1));
+        $explanation = trim($data['explanation'] ?? '');
 
         if ($question_id <= 0 || empty($question_text)) {
             echo json_encode(['success' => false, 'message' => 'ID soal dan teks soal wajib diisi.']);
@@ -124,19 +126,19 @@ if ($method === 'POST') {
 
             $stmt = $pdo->prepare("
                 UPDATE questions 
-                SET type = 'multiple_choice', question_text = ?, option_a = ?, option_b = ?, option_c = ?, option_d = ?, correct_option = ?, points = ?
+                SET type = 'multiple_choice', question_text = ?, option_a = ?, option_b = ?, option_c = ?, option_d = ?, correct_option = ?, points = ?, explanation = ?
                 WHERE id = ?
             ");
-            $stmt->execute([$question_text, $option_a, $option_b, $option_c, $option_d, $correct_option, $points, $question_id]);
+            $stmt->execute([$question_text, $option_a, $option_b, $option_c, $option_d, $correct_option, $points, $explanation, $question_id]);
         } else {
             // Essay
             $essay_answer = trim($data['essay_answer'] ?? '');
             $stmt = $pdo->prepare("
                 UPDATE questions 
-                SET type = 'essay', question_text = ?, option_a = NULL, option_b = NULL, option_c = NULL, option_d = NULL, correct_option = NULL, essay_answer = ?, points = ?
+                SET type = 'essay', question_text = ?, option_a = NULL, option_b = NULL, option_c = NULL, option_d = NULL, correct_option = NULL, essay_answer = ?, points = ?, explanation = ?
                 WHERE id = ?
             ");
-            $stmt->execute([$question_text, $essay_answer, $points, $question_id]);
+            $stmt->execute([$question_text, $essay_answer, $points, $explanation, $question_id]);
         }
 
         echo json_encode(['success' => true, 'message' => 'Soal berhasil diperbarui!']);

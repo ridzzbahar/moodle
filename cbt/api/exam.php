@@ -25,6 +25,57 @@ if ($action === 'start') {
         exit;
     }
 
+    // Verify quiz exists and enforce strict student class and major isolation
+    $stmtQzInfo = $pdo->prepare("
+        SELECT qz.id, qz.title, qz.duration_minutes, qz.kkm, qz.course_id,
+               c.course_name, c.major AS course_major, c.class_id AS course_class_id,
+               cl.class_name AS course_class_name
+        FROM quizzes qz
+        LEFT JOIN courses c ON qz.course_id = c.id
+        LEFT JOIN classes cl ON c.class_id = cl.id
+        WHERE qz.id = ?
+    ");
+    $stmtQzInfo->execute([$quiz_id]);
+    $quizInfo = $stmtQzInfo->fetch();
+
+    if (!$quizInfo) {
+        echo json_encode(['success' => false, 'message' => 'Ujian tidak ditemukan.']);
+        exit;
+    }
+
+    if ($role === 'siswa') {
+        $stmtU = $pdo->prepare("SELECT u.id, u.major, u.class_id, cl.class_name FROM users u LEFT JOIN classes cl ON u.class_id = cl.id WHERE u.id = ?");
+        $stmtU->execute([$user_id]);
+        $studentUser = $stmtU->fetch();
+
+        $cMajor = trim($quizInfo['course_major'] ?? '');
+        $sMajor = trim($studentUser['major'] ?? '');
+        $cClassId = $quizInfo['course_class_id'] ? (int)$quizInfo['course_class_id'] : null;
+        $sClassId = $studentUser['class_id'] ? (int)$studentUser['class_id'] : null;
+
+        // Check Major
+        if (!empty($cMajor) && strcasecmp($cMajor, 'Umum') !== 0) {
+            if (strcasecmp($cMajor, $sMajor) !== 0) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => "Akses Ditolak: Ujian ini hanya untuk siswa jurusan {$cMajor}. Anda terdaftar di jurusan " . ($sMajor ?: 'Umum') . "."
+                ]);
+                exit;
+            }
+        }
+
+        // Check Class
+        if ($cClassId !== null && $cClassId !== $sClassId) {
+            $reqName = $quizInfo['course_class_name'] ?: 'kelas tertentu';
+            $curName = $studentUser['class_name'] ?: 'Kelas Lain';
+            echo json_encode([
+                'success' => false,
+                'message' => "Akses Ditolak: Ujian ini hanya diperuntukkan bagi {$reqName}. Anda terdaftar di {$curName}."
+            ]);
+            exit;
+        }
+    }
+
     // Check if disqualified
     $stmtDisq = $pdo->prepare("SELECT * FROM exam_attempts WHERE quiz_id = ? AND user_id = ? AND status = 'disqualified' ORDER BY id DESC LIMIT 1");
     $stmtDisq->execute([$quiz_id, $user_id]);
@@ -204,7 +255,7 @@ if ($action === 'submit') {
     $quiz_id = $attempt['quiz_id'];
 
     if ($attempt['status'] !== 'completed' && $attempt['status'] !== 'disqualified') {
-        $stmtQ = $pdo->prepare("SELECT id, correct_option FROM questions WHERE quiz_id = ?");
+        $stmtQ = $pdo->prepare("SELECT id, type, correct_option, points, explanation, essay_answer FROM questions WHERE quiz_id = ?");
         $stmtQ->execute([$quiz_id]);
         $questions = $stmtQ->fetchAll();
 
@@ -213,13 +264,21 @@ if ($action === 'submit') {
 
         foreach ($questions as $q) {
             $q_id = $q['id'];
-            $correct_key = strtoupper(trim($q['correct_option'] ?? ''));
+            $q_type = $q['type'] ?? 'multiple_choice';
 
-            $stmtAns = $pdo->prepare("SELECT selected_option FROM exam_answers WHERE attempt_id = ? AND question_id = ?");
+            $stmtAns = $pdo->prepare("SELECT selected_option, essay_response FROM exam_answers WHERE attempt_id = ? AND question_id = ?");
             $stmtAns->execute([$attempt_id, $q_id]);
-            $user_opt = strtoupper(trim($stmtAns->fetchColumn() ?: ''));
+            $ansRow = $stmtAns->fetch();
+            $user_opt = strtoupper(trim($ansRow['selected_option'] ?? ''));
+            $user_essay = trim($ansRow['essay_response'] ?? '');
 
-            $is_correct = ($user_opt !== '' && $user_opt === $correct_key) ? 1 : 0;
+            if ($q_type === 'essay') {
+                // Essay question: if student has answered the essay, count as submitted/valid response
+                $is_correct = (!empty($user_essay)) ? 1 : 0;
+            } else {
+                $correct_key = strtoupper(trim($q['correct_option'] ?? ''));
+                $is_correct = ($user_opt !== '' && $user_opt === $correct_key) ? 1 : 0;
+            }
             if ($is_correct) $correct_cnt++;
 
             // Ensure record in exam_answers exists with updated is_correct
@@ -229,8 +288,8 @@ if ($action === 'submit') {
                 $stmtUpdAns = $pdo->prepare("UPDATE exam_answers SET is_correct = ? WHERE attempt_id = ? AND question_id = ?");
                 $stmtUpdAns->execute([$is_correct, $attempt_id, $q_id]);
             } else {
-                $stmtInsAns = $pdo->prepare("INSERT INTO exam_answers (attempt_id, question_id, selected_option, is_correct) VALUES (?, ?, ?, ?)");
-                $stmtInsAns->execute([$attempt_id, $q_id, $user_opt, $is_correct]);
+                $stmtInsAns = $pdo->prepare("INSERT INTO exam_answers (attempt_id, question_id, selected_option, essay_response, is_correct) VALUES (?, ?, ?, ?, ?)");
+                $stmtInsAns->execute([$attempt_id, $q_id, $user_opt ?: null, $user_essay ?: null, $is_correct]);
             }
         }
 
@@ -260,11 +319,12 @@ if ($action === 'submit') {
     $stmtQuizInfo->execute([$quiz_id]);
     $quizInfo = $stmtQuizInfo->fetch();
 
-    // Fetch full review questions with correct answers and student answers
+    // Fetch full review questions with correct answers, essays, explanations and student answers
     $stmtReview = $pdo->prepare("
-        SELECT q.id, q.question_text, q.option_a, q.option_b, q.option_c, q.option_d,
-               UPPER(TRIM(q.correct_option)) as correct_option, q.points,
+        SELECT q.id, q.type, q.question_text, q.option_a, q.option_b, q.option_c, q.option_d,
+               UPPER(TRIM(q.correct_option)) as correct_option, q.essay_answer, q.explanation, q.points,
                UPPER(TRIM(COALESCE(ea.selected_option, ''))) as selected_option,
+               COALESCE(ea.essay_response, '') as essay_response,
                COALESCE(ea.is_correct, 0) as is_correct
         FROM questions q
         LEFT JOIN exam_answers ea ON ea.question_id = q.id AND ea.attempt_id = ?
@@ -319,9 +379,10 @@ if ($action === 'review') {
     }
 
     $stmtReview = $pdo->prepare("
-        SELECT q.id, q.question_text, q.option_a, q.option_b, q.option_c, q.option_d,
-               UPPER(TRIM(q.correct_option)) as correct_option, q.points,
+        SELECT q.id, q.type, q.question_text, q.option_a, q.option_b, q.option_c, q.option_d,
+               UPPER(TRIM(q.correct_option)) as correct_option, q.essay_answer, q.explanation, q.points,
                UPPER(TRIM(COALESCE(ea.selected_option, ''))) as selected_option,
+               COALESCE(ea.essay_response, '') as essay_response,
                COALESCE(ea.is_correct, 0) as is_correct
         FROM questions q
         LEFT JOIN exam_answers ea ON ea.question_id = q.id AND ea.attempt_id = ?

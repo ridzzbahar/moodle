@@ -31,23 +31,32 @@ if ($method === 'GET') {
     ";
     $params = [];
 
-    // If student, filter by student's major or Umum
+    // If student, strictly filter by student's major and class
     if ($role === 'siswa') {
         $userRow = $pdo->prepare("SELECT major, class_id FROM users WHERE id = ?");
         $userRow->execute([$user_id]);
         $uInfo = $userRow->fetch();
-        $studentMajor = $uInfo['major'] ?? 'Umum';
+        $studentMajor = trim($uInfo['major'] ?? 'Umum');
+        $studentClass = !empty($uInfo['class_id']) ? intval($uInfo['class_id']) : null;
 
-        $sql .= " AND (cr.major = 'Umum' OR cr.major = ? OR cr.major IS NULL)";
+        $sql .= " AND (cr.major = 'Umum' OR cr.major = ? OR cr.major IS NULL OR cr.major = '')";
         $params[] = $studentMajor;
-    } elseif (!empty($filter_major) && $filter_major !== 'all') {
-        $sql .= " AND (cr.major = ? OR cr.major = 'Umum')";
-        $params[] = $filter_major;
-    }
 
-    if ($filter_class && $filter_class > 0) {
-        $sql .= " AND (cr.class_id = ? OR cr.class_id IS NULL)";
-        $params[] = $filter_class;
+        if ($studentClass) {
+            $sql .= " AND (cr.class_id = ? OR cr.class_id IS NULL)";
+            $params[] = $studentClass;
+        } else {
+            $sql .= " AND (cr.class_id IS NULL)";
+        }
+    } else {
+        if (!empty($filter_major) && $filter_major !== 'all') {
+            $sql .= " AND (cr.major = ? OR cr.major = 'Umum')";
+            $params[] = $filter_major;
+        }
+        if ($filter_class && $filter_class > 0) {
+            $sql .= " AND (cr.class_id = ? OR cr.class_id IS NULL)";
+            $params[] = $filter_class;
+        }
     }
 
     $sql .= " ORDER BY cr.id DESC";
@@ -78,7 +87,7 @@ if ($method === 'POST') {
         $class_id = !empty($data['class_id']) ? intval($data['class_id']) : null;
         $teacher_id = !empty($data['teacher_id']) ? intval($data['teacher_id']) : $user_id;
         $major = trim($data['major'] ?? 'Umum') ?: 'Umum';
-        $icon = trim($data['icon'] ?? '📚');
+        $icon = trim($data['icon'] ?? 'fa-book') ?: 'fa-book';
 
         if (empty($code) || empty($name)) {
             echo json_encode(['success' => false, 'message' => 'Kode Mapel dan Nama Mata Pelajaran wajib diisi.']);
@@ -103,7 +112,7 @@ if ($method === 'POST') {
         $class_id = !empty($data['class_id']) ? intval($data['class_id']) : null;
         $teacher_id = !empty($data['teacher_id']) ? intval($data['teacher_id']) : null;
         $major = trim($data['major'] ?? 'Umum') ?: 'Umum';
-        $icon = trim($data['icon'] ?? '📚');
+        $icon = trim($data['icon'] ?? 'fa-book') ?: 'fa-book';
 
         if ($course_id <= 0 || empty($code) || empty($name)) {
             echo json_encode(['success' => false, 'message' => 'ID, Kode Mapel, dan Nama Mata Pelajaran wajib diisi.']);

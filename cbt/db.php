@@ -241,6 +241,10 @@ try {
       FOREIGN KEY (`course_id`) REFERENCES `courses`(`id`) ON DELETE CASCADE,
       FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    try { $pdo->exec("ALTER TABLE `course_materials` MODIFY COLUMN `type` VARCHAR(50) NOT NULL DEFAULT 'text';"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE `course_materials` ADD COLUMN `file_name` VARCHAR(255) DEFAULT NULL;"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE `course_materials` ADD COLUMN `file_size` INT DEFAULT 0;"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE `classes` ADD COLUMN `grade_level` INT DEFAULT NULL;"); } catch (PDOException $e) {}
 
     // assignments
     $pdo->exec("CREATE TABLE IF NOT EXISTS `assignments` (

@@ -22,6 +22,9 @@ session_start();
   <!-- SheetJS for Excel export -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
+  <!-- Font Awesome 6 Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
   <!-- App Stylesheet -->
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -65,7 +68,7 @@ session_start();
         <span id="lang-text">ID</span>
       </button>
       <button class="theme-btn" id="theme-btn" onclick="App.toggleTheme()" title="Ganti Tema">
-        <span id="theme-icon">🌙</span>
+        <span id="theme-icon"><i class="fa-solid fa-moon"></i></span>
       </button>
       <div id="navbar-user-area"></div>
     </div>
@@ -88,7 +91,7 @@ session_start();
             <img src="images/logo.png" alt="Logo" class="sidebar-brand-img" onerror="this.onerror=null; this.src='images/logo.jpg';">
             <span>SMKN 1 CIBINONG</span>
           </div>
-          <button class="sidebar-close-btn" onclick="App.closeSidebar()" aria-label="Tutup Menu">✕</button>
+          <button class="sidebar-close-btn" onclick="App.closeSidebar()" aria-label="Tutup Menu"><i class="fa-solid fa-xmark"></i></button>
         </div>
 
         <div id="sidebar-nav-content">
